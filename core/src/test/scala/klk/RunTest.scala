@@ -1,0 +1,6 @@
+package klk
+
+object RunTest
+{
+  
+}
