@@ -20,6 +20,7 @@ extends AutoPlugin
           "-feature",
           "-language:higherKinds",
           "-language:experimental.macros",
+          "-language:existentials",
           // "-Xfatal-warnings",
           "-Ywarn-value-discard",
           "-Ywarn-unused:imports",
