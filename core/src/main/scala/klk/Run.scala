@@ -41,26 +41,50 @@ case class TestResult[A, B](success: Boolean, details: TestResultDetails[A, B])
 
 trait TestReporter[A, B]
 {
-  def failure: TestResultDetails[A, B] => Unit
+  def result(log: TestLog): String => Boolean => Unit
+  def failure(log: TestLog): TestResultDetails[A, B] => Unit
 }
 
 object TestReporter
 {
-  def format[A, B]: TestResultDetails[A, B] => List[String] = {
+  def indent(spaces: Int)(lines: List[String]): List[String] =
+    lines.map(a => s"${" " * spaces}$a")
+
+  def sanitizeStacktrace(trace: List[StackTraceElement]): List[String] =
+    trace
+      .takeWhile(a => !a.getClassName.startsWith("klk.TestRunner"))
+      .reverse
+      .dropWhile(a => a.getClassName.startsWith("cats.effect"))
+      .dropWhile(a => a.getClassName.startsWith("scala.runtime"))
+      .reverse
+      .map(_.toString)
+
+  def formatFailure[A, B]: TestResultDetails[A, B] => List[String] = {
     case TestResultDetails.NoDetails() =>
       List("test failed")
     case TestResultDetails.Simple(info) =>
       info
     case TestResultDetails.Complex(desc, target, actual) =>
-      desc ::: List(target.toString, actual.toString)
+      desc ::: indent(2)(List(s"target: ${target.toString.green}", s"actual: ${actual.toString.magenta}"))
     case TestResultDetails.Fatal(error) =>
-      s"test threw $error" :: error.getStackTrace.toList.takeWhile(_.getMethodName != "newInstance0").map(a => s"  $a")
+      s"${"test threw".blue} ${error.toString.magenta}" :: indent(2)(sanitizeStacktrace(error.getStackTrace.toList))
   }
+
+  def successSymbol: Boolean => String = {
+    case false => "✘".red
+    case true => "✔".green
+  }
+
+  def formatResult(desc: String)(success: Boolean): List[String] =
+    List(s"${successSymbol(success)} $desc")
 
   def stdout[A, B]: TestReporter[A, B] =
     new TestReporter[A, B] {
-      def failure: TestResultDetails[A, B] => Unit =
-        result => format(result).foreach(println)
+      def result(log: TestLog): String => Boolean => Unit =
+        desc => (log.info _).compose(formatResult(desc))
+
+      def failure(log: TestLog): TestResultDetails[A, B] => Unit =
+        (log.info _).compose(indent(2)).compose(formatFailure)
     }
 }
 
@@ -84,18 +108,15 @@ case class KlkTest[F[_], A, B](desc: String, thunk: F[TestResult[A, B]], runner:
 
 object KlkTest
 {
-  def successSymbol: Boolean => String = {
-    case false => "✘".red
-    case true => "✔".green
+  def logResult[A, B](reporter: TestReporter[A, B], log: TestLog)(desc: String, result: TestResult[A, B]): Unit = {
+    reporter.result(log)(desc)(result.success)
+    if (!result.success) reporter.failure(log)(result.details)
   }
 
-  def logTest(log: TestLog)(desc: String, result: TestResult[_, _]): Unit =
-    log.info(List(s"${successSymbol(result.success)} $desc"))
-
-  def run[F[_], A, B](log: TestLog): KlkTest[F, A, B] => TestResult[A, B] = {
+  def run[F[_], A, B](reporter: TestReporter[A, B], log: TestLog): KlkTest[F, A, B] => TestResult[A, B] = {
     case KlkTest(desc, thunk, runner) =>
       val result = runner.run(thunk)
-      logTest(log)(desc, result)
+      logResult(reporter, log)(desc, result)
       result
   }
 }
@@ -169,6 +190,18 @@ extends SubclassFingerprint
     true
 }
 
+object ExecuteTask
+{
+  def apply[F[_], A, B]
+  (reporter: TestReporter[A, B])
+  (test: KlkTest[F, A, B])
+  : (EventHandler, Array[Logger]) => Array[Task] =
+    (_, log) => {
+      KlkTest.run(reporter, TestLog(log))(test)
+      Array()
+    }
+}
+
 case class KlkTask(taskDef: TaskDef, exe: (EventHandler, Array[Logger]) => Array[Task], tags: Array[String])
 extends Task
 {
@@ -176,42 +209,20 @@ extends Task
     exe(handler, loggers)
 }
 
-case class PresentTask(taskDef: TaskDef, exe: (EventHandler, Array[Logger]) => Array[Task], tags: Array[String])
-extends Task
-{
-  def execute(handler: EventHandler, loggers: Array[Logger]): Array[Task] =
-    exe(handler, loggers)
-}
-
-object PresentTask
-{
-  def present[A, B](result: TestResult[A, B]): (EventHandler, Array[Logger]) => Array[Task] =
-    (_, log) => {
-      // log.foreach(l => TestReporter.format(result.details).foreach(l.info))
-      Array()
-    }
-
-  def forResult[A, B](taskDef: TaskDef)(result: TestResult[A, B]): Task =
-    PresentTask(taskDef, present(result), Array.empty)
-}
-
-object ExecuteTask
-{
-  def apply[F[_], A, B](taskDef: TaskDef, test: KlkTest[F, A, B]): (EventHandler, Array[Logger]) => Array[Task] =
-    (_, log) => Array(PresentTask.forResult(taskDef)(KlkTest.run(TestLog(log))(test)))
-}
-
 object KlkTask
 {
-  def fromConstructor(taskDef: TaskDef)(ctor: Constructor[_]): Array[KlkTask] = {
+  def testInstance(ctor: Constructor[_]): Test = {
     ctor.setAccessible(true)
     ctor
       .newInstance()
       .asInstanceOf[Test]
+  }
+
+  def fromTest(taskDef: TaskDef)(test: Test): Array[KlkTask] =
+    test
       .tests
       .toArray
-      .map(a => KlkTask(taskDef, ExecuteTask(taskDef, a), Array.empty))
-  }
+      .map(a => KlkTask(taskDef, ExecuteTask(test.reporter)(a), Array.empty))
 
   def fromTaskDef(loader: ClassLoader)(taskDef: TaskDef): Array[KlkTask] =
     loader
@@ -219,7 +230,8 @@ object KlkTask
       .asInstanceOf[Class[Test]]
       .getDeclaredConstructors
       .headOption
-      .map(fromConstructor(taskDef))
+      .map(testInstance)
+      .map(fromTest(taskDef))
       .getOrElse(Array.empty)
 }
 

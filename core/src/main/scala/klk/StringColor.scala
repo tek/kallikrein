@@ -29,5 +29,6 @@ object StringColor
     def green = sc.color(s, GREEN)
     def yellow = sc.color(s, YELLOW)
     def blue = sc.color(s, BLUE)
+    def magenta = sc.color(s, MAGENTA)
   }
 }
