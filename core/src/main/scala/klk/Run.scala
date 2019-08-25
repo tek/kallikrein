@@ -1,15 +1,12 @@
 package klk
 
-import java.lang.reflect.Constructor
-
 import scala.collection.mutable
 import scala.util.control.NonFatal
-import scala.concurrent.ExecutionContext
 
-import cats.Eq
+import cats.Functor
+import cats.effect.{Concurrent, IO}
 import cats.implicits._
-import cats.effect.{IO, Timer}
-import sbt.testing.{Framework, Fingerprint, SubclassFingerprint, Runner, Task, TaskDef, EventHandler, Logger}
+import sbt.testing.Logger
 
 import StringColor._
 import StringColors.color
@@ -20,29 +17,10 @@ case class TestLog(loggers: Array[Logger])
     loggers.foreach(l => lines.foreach(l.info))
 }
 
-sealed trait TestResultDetails[A, B]
-
-object TestResultDetails
-{
-  case class NoDetails[A, B]()
-  extends TestResultDetails[A, B]
-
-  case class Simple[A, B](info: List[String])
-  extends TestResultDetails[A, B]
-
-  case class Complex[A, B](desc: List[String], target: A, actual: B)
-  extends TestResultDetails[A, B]
-
-  case class Fatal[A, B](error: Throwable)
-  extends TestResultDetails[A, B]
-}
-
-case class TestResult[A, B](success: Boolean, details: TestResultDetails[A, B])
-
 trait TestReporter[A, B]
 {
   def result(log: TestLog): String => Boolean => Unit
-  def failure(log: TestLog): TestResultDetails[A, B] => Unit
+  def failure(log: TestLog): KlkResultDetails[A, B] => Unit
 }
 
 object TestReporter
@@ -52,21 +30,21 @@ object TestReporter
 
   def sanitizeStacktrace(trace: List[StackTraceElement]): List[String] =
     trace
-      .takeWhile(a => !a.getClassName.startsWith("klk.TestRunner"))
+      .takeWhile(a => !a.getClassName.startsWith("klk.TestEffect"))
       .reverse
       .dropWhile(a => a.getClassName.startsWith("cats.effect"))
       .dropWhile(a => a.getClassName.startsWith("scala.runtime"))
       .reverse
       .map(_.toString)
 
-  def formatFailure[A, B]: TestResultDetails[A, B] => List[String] = {
-    case TestResultDetails.NoDetails() =>
+  def formatFailure[A, B]: KlkResultDetails[A, B] => List[String] = {
+    case KlkResultDetails.NoDetails() =>
       List("test failed")
-    case TestResultDetails.Simple(info) =>
+    case KlkResultDetails.Simple(info) =>
       info
-    case TestResultDetails.Complex(desc, target, actual) =>
+    case KlkResultDetails.Complex(desc, target, actual) =>
       desc ::: indent(2)(List(s"target: ${target.toString.green}", s"actual: ${actual.toString.magenta}"))
-    case TestResultDetails.Fatal(error) =>
+    case KlkResultDetails.Fatal(error) =>
       s"${"test threw".blue} ${error.toString.magenta}" :: indent(2)(sanitizeStacktrace(error.getStackTrace.toList))
   }
 
@@ -83,37 +61,37 @@ object TestReporter
       def result(log: TestLog): String => Boolean => Unit =
         desc => (log.info _).compose(formatResult(desc))
 
-      def failure(log: TestLog): TestResultDetails[A, B] => Unit =
+      def failure(log: TestLog): KlkResultDetails[A, B] => Unit =
         (log.info _).compose(indent(2)).compose(formatFailure)
     }
 }
 
-trait TestRunner[F[_]]
+trait TestEffect[F[_]]
 {
-  def run[A, B](thunk: F[TestResult[A, B]]): TestResult[A, B]
+  def run[A, B](thunk: F[KlkResult[A, B]]): KlkResult[A, B]
 }
 
-object TestRunner
+object TestEffect
 {
-  def io: TestRunner[IO] =
-    new TestRunner[IO] {
-      def run[A, B](thunk: IO[TestResult[A, B]]): TestResult[A, B] =
+  implicit def io: TestEffect[IO] =
+    new TestEffect[IO] {
+      def run[A, B](thunk: IO[KlkResult[A, B]]): KlkResult[A, B] =
         thunk
-          .recover { case NonFatal(a) => TestResult(false, TestResultDetails.Fatal[A, B](a)) }
+          .recover { case NonFatal(a) => KlkResult(false, KlkResultDetails.Fatal[A, B](a)) }
           .unsafeRunSync
     }
 }
 
-case class KlkTest[F[_], A, B](desc: String, thunk: F[TestResult[A, B]], runner: TestRunner[F])
+case class KlkTest[F[_], A, B](desc: String, thunk: F[KlkResult[A, B]], runner: TestEffect[F])
 
 object KlkTest
 {
-  def logResult[A, B](reporter: TestReporter[A, B], log: TestLog)(desc: String, result: TestResult[A, B]): Unit = {
+  def logResult[A, B](reporter: TestReporter[A, B], log: TestLog)(desc: String, result: KlkResult[A, B]): Unit = {
     reporter.result(log)(desc)(result.success)
     if (!result.success) reporter.failure(log)(result.details)
   }
 
-  def run[F[_], A, B](reporter: TestReporter[A, B], log: TestLog): KlkTest[F, A, B] => TestResult[A, B] = {
+  def run[F[_], A, B](reporter: TestReporter[A, B], log: TestLog): KlkTest[F, A, B] => KlkResult[A, B] = {
     case KlkTest(desc, thunk, runner) =>
       val result = runner.run(thunk)
       logResult(reporter, log)(desc, result)
@@ -121,23 +99,65 @@ object KlkTest
   }
 }
 
-trait ConstructTest[F[_], T, A, B]
+trait TestResult[F[_], Output, Expected, Actual]
 {
-  def apply(desc: String)(thunk: T): KlkTest[F, A, B]
+  def handle(output: F[Output]): F[KlkResult[Expected, Actual]]
 }
 
-object ConstructTest
+object TestResult
 {
-  implicit def ConstructTest_IO_Boolean: ConstructTest[IO, IO[Boolean], Boolean, Boolean] =
-    new ConstructTest[IO, IO[Boolean], Boolean, Boolean] {
-      def apply(desc: String)(thunk: IO[Boolean]): KlkTest[IO, Boolean, Boolean] =
-        KlkTest(desc, thunk.map(TestResult(_, TestResultDetails.NoDetails())), TestRunner.io)
+  implicit def TestResult_KlkResult[F[_], E, A]: TestResult[F, KlkResult[E, A], E, A] =
+    new TestResult[F, KlkResult[E, A], E, A] {
+      def handle(output: F[KlkResult[E, A]]): F[KlkResult[E, A]] =
+        output
     }
 
-  implicit def ConstructTest_IO_TestResult[A, B]: ConstructTest[IO, IO[TestResult[A, B]], A, B] =
-    new ConstructTest[IO, IO[TestResult[A, B]], A, B] {
-      def apply(desc: String)(thunk: IO[TestResult[A, B]]): KlkTest[IO, A, B] =
-        KlkTest(desc, thunk, TestRunner.io)
+  implicit def TestResult_Boolean[F[_]: Functor]: TestResult[F, Boolean, Boolean, Boolean] =
+    new TestResult[F, Boolean, Boolean, Boolean] {
+      def handle(output: F[Boolean]): F[KlkResult[Boolean, Boolean]] =
+        output.map(a => KlkResult(a, KlkResultDetails.NoDetails()))
+    }
+
+  implicit def TestResult_PropertyTestResult[F[_]: Functor]: TestResult[F, PropertyTestResult, Boolean, Boolean] =
+    new TestResult[F, PropertyTestResult, Boolean, Boolean] {
+      def handle(output: F[PropertyTestResult]): F[KlkResult[Boolean, Boolean]] = {
+        output.map(result => KlkResult(result.success, KlkResultDetails.NoDetails()))
+      }
+    }
+}
+
+trait TestParams[F[_], Thunk, Params, Output]
+{
+  def func(thunk: Thunk): Params => F[Output]
+}
+
+case class TestFunction[F[_], Output](thunk: F[Output])
+
+object TestFunction
+{
+  def execute[F[_], Output, Expected, Actual]: TestFunction[F, Output] => F[Output] = {
+    case TestFunction(f) =>
+      f
+  }
+}
+
+trait TestInput[F[_], Thunk]
+{
+  type Output
+
+  def bracket(f: Thunk): TestFunction[F, Output]
+}
+
+object TestInput
+{
+  type Aux[F[_], Thunk, Output0] = TestInput[F, Thunk] { type Output = Output0 }
+
+  implicit def TestInput_Any[F[_], Output0]: TestInput.Aux[F, F[Output0], Output0] =
+    new TestInput[F, F[Output0]] {
+      type Output = Output0
+      def bracket(f: F[Output]): TestFunction[F, Output] = {
+        TestFunction(f)
+      }
     }
 }
 
@@ -148,114 +168,55 @@ trait Test
   val tests: mutable.Buffer[KlkTest[F, A, B] forSome { type F[_]; type A; type B }] =
     mutable.Buffer.empty
 
-  def test[F[_], T, A, B](desc: String)(thunk: T)(implicit ct: ConstructTest[F, T, A, B]): Unit =
-    tests += ct(desc)(thunk)
+  class TestPartiallyApplied[F[_]](desc: String) {
+    def apply[Thunk, Params, Output, Expected, Actual]
+    (thunk: Thunk)
+    (
+      implicit
+      input: TestInput.Aux[F, Thunk, Output],
+      result: TestResult[F, Output, Expected, Actual],
+      effect: TestEffect[F],
+    )
+    : Unit =
+      tests += Test[F, Thunk, Params, Output, Expected, Actual](input, result, effect)(desc)(thunk)
 
-  import scala.language.implicitConversions
-
-  implicit def test0[T, A, B](t: => T)(implicit ct: ConstructTest[IO, () => T, A, B]): () => T =
-    () => ct match { case _ => t }
-}
-
-trait SimpleAssertions
-{
-  def assert(desc: String)(value: Boolean): TestResult[Boolean, Boolean] =
-    TestResult(value, TestResultDetails.Simple(List(desc)))
-
-  def assertEqual[A](target: A)(candidate: A)(implicit eql: Eq[A]): TestResult[A, A] =
-    TestResult(eql.eqv(target, candidate), TestResultDetails.Complex(List("values are not equal"), target, candidate))
-}
-
-trait SimpleTest
-extends Test
-with SimpleAssertions
-{
-  def reporter[A, B]: TestReporter[A, B] =
-    TestReporter.stdout
-
-  implicit def timer: Timer[IO] =
-    IO.timer(ExecutionContext.global)
-}
-
-object KlkFingerprint
-extends SubclassFingerprint
-{
-  def superclassName: String =
-    "klk.Test"
-
-  def isModule: Boolean =
-    true
-
-  def requireNoArgConstructor: Boolean =
-    true
-}
-
-object ExecuteTask
-{
-  def apply[F[_], A, B]
-  (reporter: TestReporter[A, B])
-  (test: KlkTest[F, A, B])
-  : (EventHandler, Array[Logger]) => Array[Task] =
-    (_, log) => {
-      KlkTest.run(reporter, TestLog(log))(test)
-      Array()
-    }
-}
-
-case class KlkTask(taskDef: TaskDef, exe: (EventHandler, Array[Logger]) => Array[Task], tags: Array[String])
-extends Task
-{
-  def execute(handler: EventHandler, loggers: Array[Logger]): Array[Task] =
-    exe(handler, loggers)
-}
-
-object KlkTask
-{
-  def testInstance(ctor: Constructor[_]): Test = {
-    ctor.setAccessible(true)
-    ctor
-      .newInstance()
-      .asInstanceOf[Test]
+    def forall[Thunk, Params, Expected, Actual]
+    (thunk: Thunk)
+    (
+      implicit
+      input: PropGen[F, Thunk],
+      result: TestResult[F, PropertyTestResult, Expected, Actual],
+      effect: TestEffect[F],
+      sync: Concurrent[F],
+    )
+    : Unit =
+      tests += Test.forall[F, Thunk, Params, PropertyTestResult, Expected, Actual](input, result, effect)(desc)(thunk)
   }
 
-  def fromTest(taskDef: TaskDef)(test: Test): Array[KlkTask] =
-    test
-      .tests
-      .toArray
-      .map(a => KlkTask(taskDef, ExecuteTask(test.reporter)(a), Array.empty))
+  def test[F[_]]
+  (desc: String)
+  : TestPartiallyApplied[F] =
+    new TestPartiallyApplied(desc)
 
-  def fromTaskDef(loader: ClassLoader)(taskDef: TaskDef): Array[KlkTask] =
-    loader
-      .loadClass(taskDef.fullyQualifiedName + "$")
-      .asInstanceOf[Class[Test]]
-      .getDeclaredConstructors
-      .headOption
-      .map(testInstance)
-      .map(fromTest(taskDef))
-      .getOrElse(Array.empty)
+  // import scala.language.implicitConversions
+
+  // implicit def test0[T, A, B](t: => T)(implicit output: ConstructTest[IO, () => T, A, B]): () => T =
+  //   () => output match { case _ => t }
 }
 
-class KlkFramework
-extends Framework
+object Test
 {
-  def name: String =
-    "kallikrein"
+  def apply[F[_], T, P, O, E, R]
+  (input: TestInput.Aux[F, T, O], result: TestResult[F, O, E, R], effect: TestEffect[F])
+  (desc: String)
+  (thunk: T)
+  : KlkTest[F, E, R] =
+    KlkTest(desc, result.handle(TestFunction.execute(input.bracket(thunk))), effect)
 
-  def fingerprints: Array[Fingerprint] =
-    Array(KlkFingerprint)
-
-  def runner(args0: Array[String], remoteArgs0: Array[String], testClassLoader: ClassLoader): Runner =
-    new Runner {
-      def args: Array[String] =
-        args0
-
-      def done: String =
-        "done!"
-
-      def remoteArgs: Array[String] =
-        remoteArgs0
-
-      def tasks(x: Array[TaskDef]): Array[Task] =
-        x.flatMap(KlkTask.fromTaskDef(testClassLoader))
-    }
+  def forall[F[_]: Concurrent, T, P, O, E, R]
+  (input: PropGen[F, T], result: TestResult[F, PropertyTestResult, E, R], effect: TestEffect[F])
+  (desc: String)
+  (thunk: T)
+  : KlkTest[F, E, R] =
+    KlkTest(desc, result.handle(TestFunction.execute(PropGen(thunk)(Concurrent[F], input))), effect)
 }
