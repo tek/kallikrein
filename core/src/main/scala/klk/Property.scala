@@ -2,13 +2,13 @@ package klk
 
 import cats.{Functor, Monad}
 import cats.data.Kleisli
-import cats.effect.{Concurrent, Sync}
+import cats.effect.{Concurrent, Resource, Sync}
 import cats.implicits._
-import fs2.Stream
+import fs2.{Pull, Stream}
 import fs2.concurrent.SignallingRef
-import org.scalacheck.{Arbitrary, ForAll, Gen, Prop}
+import org.scalacheck.{Arbitrary, ForAll, Gen, Prop, Test => PropTest}
 import org.scalacheck.Test.{Parameters => TestParameters}
-import org.scalacheck.util.Pretty
+import org.scalacheck.util.{FreqMap, Pretty}
 
 case class ScalacheckParams(test: TestParameters, gen: Gen.Parameters, sizeStep: Int)
 
@@ -24,7 +24,9 @@ object ScalacheckParams
     cons(TestParameters.default, Gen.Parameters.default)
 }
 
-case class PropertyTestResult(success: Boolean)
+case class PropertyTestState(finished: Boolean, discarded: Int)
+
+case class PropertyTestResult(success: Boolean, result: PropTest.Result)
 
 case class PropertyTest[F[_]](test: Kleisli[F, Gen.Parameters, Prop.Result])
 
@@ -40,11 +42,36 @@ object PropertyTest
       _ <- terminate.set(true).whenA(PropResult.finished(result))
     } yield result
 
-  def aggregateResults: (PropertyTestResult, Prop.Result) => PropertyTestResult = {
-    case (PropertyTestResult(success), r@Prop.Result(_, _, _, _)) =>
-      println(r)
-      PropertyTestResult(success)
+  def updateState(propResult: Prop.Result): PropertyTestState => PropertyTestState = {
+    case PropertyTestState(finished, discarded) =>
+      propResult.status match {
+        case Prop.True => PropertyTestState(finished, discarded)
+        case Prop.False => PropertyTestState(true, discarded)
+        case Prop.Proof => PropertyTestState(true, discarded)
+        case Prop.Undecided => PropertyTestState(false, discarded)
+        case Prop.Exception(_) => PropertyTestState(true, discarded)
+      }
   }
+
+  def finish[F[_]]: PropertyTestState => Pull[F, PropertyTestResult, Unit] = {
+    case PropertyTestState(_, discarded) =>
+    Pull.output1(PropertyTestResult(true, PropTest.Result(PropTest.Passed, 0, discarded, FreqMap.empty))) *> Pull.done
+  }
+
+  def aggregateResults[F[_]]
+  (terminate: SignallingRef[F, Boolean])
+  (params: ScalacheckParams)
+  (state: PropertyTestState)
+  (in: Stream[F, Prop.Result])
+  : Pull[F, PropertyTestResult, Unit] =
+    in.pull.uncons1.flatMap {
+      case Some((propResult, rest)) =>
+        val updated = updateState(propResult)(state)
+        if (updated.finished) Pull.eval(terminate.set(true)) >> finish[F](updated)
+        else aggregateResults(terminate)(params)(updated)(rest)
+      case None =>
+        finish[F](state)
+    }
 
   def concurrent[F[_]: Concurrent]
   (terminate: SignallingRef[F, Boolean])
@@ -57,7 +84,7 @@ object PropertyTest
       .map(single(terminate)(test))
       .map(Stream.eval)
       .parJoin(params.test.workers)
-      .fold(PropertyTestResult(false))(aggregateResults)
+      .through(in => aggregateResults(terminate)(params)(PropertyTestState(false, 0))(in).stream)
 
   def stream[F[_]: Concurrent]
   (params: ScalacheckParams)
@@ -68,8 +95,14 @@ object PropertyTest
       result <- concurrent(terminate)(params)(test)
     } yield result
 
-  def run[F[_]: Concurrent](params: ScalacheckParams)(test: PropertyTest[F]): F[PropertyTestResult] =
-    stream(params)(test).compile.last.map(_.getOrElse(PropertyTestResult(false)))
+  def run[F[_]: Sync]
+  (concurrent: Resource[F, Concurrent[F]])
+  (params: ScalacheckParams)
+  (test: PropertyTest[F])
+  : F[PropertyTestResult] =
+    concurrent.use { implicit c =>
+      stream(params)(test).compile.last.map(_.getOrElse(PropertyTestResult(false, ???)))
+    }
 }
 
 object PropStatus
@@ -116,9 +149,10 @@ object PropGen
         ForAll.noShrink((p: P) => next.thunk(f(p)))
     }
 
-  def apply[F[_]: Concurrent, Thunk]
+  def apply[F[_]: Sync, Thunk]
+  (concurrent: Resource[F, Concurrent[F]])
   (thunk: Thunk)
   (implicit gen: PropGen[F, Thunk])
   : TestFunction[F, PropertyTestResult] =
-    TestFunction(PropertyTest.run(ScalacheckParams.default)(gen.thunk(thunk)))
+    TestFunction(PropertyTest.run(concurrent)(ScalacheckParams.default)(gen.thunk(thunk)))
 }

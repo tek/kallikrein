@@ -4,7 +4,7 @@ import scala.collection.mutable
 import scala.util.control.NonFatal
 
 import cats.Functor
-import cats.effect.{Concurrent, IO}
+import cats.effect.{Concurrent, IO, Resource, Sync}
 import cats.implicits._
 import sbt.testing.Logger
 
@@ -69,6 +69,8 @@ object TestReporter
 trait TestEffect[F[_]]
 {
   def run[A, B](thunk: F[KlkResult[A, B]]): KlkResult[A, B]
+  def concurrentPool: Resource[F, Concurrent[F]]
+  def sync: Sync[F]
 }
 
 object TestEffect
@@ -79,6 +81,12 @@ object TestEffect
         thunk
           .recover { case NonFatal(a) => KlkResult(false, KlkResultDetails.Fatal[A, B](a)) }
           .unsafeRunSync
+
+      def concurrentPool: Resource[IO, Concurrent[IO]] =
+        Concurrency.fixedPoolCs.map(IO.ioConcurrentEffect(_))
+
+      def sync: Sync[IO] =
+        Sync[IO]
     }
 }
 
@@ -187,7 +195,6 @@ trait Test
       input: PropGen[F, Thunk],
       result: TestResult[F, PropertyTestResult, Expected, Actual],
       effect: TestEffect[F],
-      sync: Concurrent[F],
     )
     : Unit =
       tests += Test.forall[F, Thunk, Params, PropertyTestResult, Expected, Actual](input, result, effect)(desc)(thunk)
@@ -213,10 +220,14 @@ object Test
   : KlkTest[F, E, R] =
     KlkTest(desc, result.handle(TestFunction.execute(input.bracket(thunk))), effect)
 
-  def forall[F[_]: Concurrent, T, P, O, E, R]
+  def forall[F[_], T, P, O, E, R]
   (input: PropGen[F, T], result: TestResult[F, PropertyTestResult, E, R], effect: TestEffect[F])
   (desc: String)
   (thunk: T)
   : KlkTest[F, E, R] =
-    KlkTest(desc, result.handle(TestFunction.execute(PropGen(thunk)(Concurrent[F], input))), effect)
+    KlkTest(
+      desc,
+      result.handle(TestFunction.execute(PropGen(effect.concurrentPool)(thunk)(effect.sync, input))),
+      effect,
+    )
 }
