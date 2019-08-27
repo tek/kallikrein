@@ -88,13 +88,36 @@ object PropertyTestState
 
 case class PropertyTestResult(success: Boolean, result: PropTest.Result)
 
+object PropertyTestResult
+{
+  def noInput: PropertyTestResult =
+    PropertyTestResult(false, PropTest.Result(PropTest.Exhausted, 0, 0, FreqMap.empty))
+
+  def resultDetails: PropertyTestResult => KlkResultDetails[Boolean, Boolean] = {
+    case PropertyTestResult(_, _) =>
+      KlkResultDetails.Simple(List("property test"))
+  }
+
+  def success: PropTest.Status => Boolean = {
+    case PropTest.Exhausted => false
+    case PropTest.Failed(_, _) => false
+    case PropTest.PropException(_, _, _) => false
+    case PropTest.Proved(_) => true
+    case PropTest.Passed => true
+  }
+}
+
 case class PropertyTest[F[_]](test: Kleisli[F, Gen.Parameters, Prop.Result])
 
 object PropertyTest
 {
   def finish[F[_]]: PropertyTestState => Pull[F, PropertyTestResult, Unit] = {
-    case PropertyTestState(PropertyTestState.Stats(_, iterations, discarded), result) =>
-      Pull.output1(PropertyTestResult(true, PropTest.Result(result, iterations, discarded, FreqMap.empty))) *> Pull.done
+    case PropertyTestState(PropertyTestState.Stats(_, iterations, discarded), status) =>
+      val result = PropertyTestResult(
+        PropertyTestResult.success(status),
+        PropTest.Result(status, iterations, discarded, FreqMap.empty),
+      )
+      Pull.output1(result) *> Pull.done
   }
 
   def aggregateResults[F[_]]
@@ -140,7 +163,7 @@ object PropertyTest
   (test: PropertyTest[F])
   : F[PropertyTestResult] =
     concurrent.use { implicit c =>
-      stream(params)(test).compile.last.map(_.getOrElse(PropertyTestResult(false, ???)))
+      stream(params)(test).compile.last.map(_.getOrElse(PropertyTestResult.noInput))
     }
 }
 
