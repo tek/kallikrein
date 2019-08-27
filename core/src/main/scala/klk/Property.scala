@@ -1,6 +1,6 @@
 package klk
 
-import cats.{Functor, Monad}
+import cats.Functor
 import cats.data.Kleisli
 import cats.effect.{Concurrent, Resource, Sync}
 import cats.implicits._
@@ -10,21 +10,81 @@ import org.scalacheck.{Arbitrary, ForAll, Gen, Prop, Test => PropTest}
 import org.scalacheck.Test.{Parameters => TestParameters}
 import org.scalacheck.util.{FreqMap, Pretty}
 
-case class ScalacheckParams(test: TestParameters, gen: Gen.Parameters, sizeStep: Int)
+case class ScalacheckParams(test: TestParameters, gen: Gen.Parameters, sizeStep: Int, maxDiscarded: Float)
 
 object ScalacheckParams
 {
   def cons(test: TestParameters, gen: Gen.Parameters): ScalacheckParams = {
     val iterations = math.ceil(test.minSuccessfulTests / test.workers.toDouble)
     val sizeStep = math.round((test.maxSize - test.minSize) / (iterations * test.workers)).toInt
-    ScalacheckParams(test, gen, sizeStep)
+    val maxDiscarded = test.maxDiscardRatio * test.minSuccessfulTests
+    ScalacheckParams(test, gen, sizeStep, maxDiscarded)
   }
 
   def default: ScalacheckParams =
     cons(TestParameters.default, Gen.Parameters.default)
 }
 
-case class PropertyTestState(finished: Boolean, discarded: Int)
+case class PropertyTestState(stats: PropertyTestState.Stats, result: PropTest.Status)
+
+object PropertyTestState
+{
+  case class Stats(finished: Boolean, iterations: Int, discarded: Int)
+
+  object Stats
+  {
+    def zero: Stats =
+      Stats(false, 0, 0)
+  }
+
+  def updateStats(status: Prop.Status, maxDiscarded: Float): Stats => Stats = {
+    case Stats(finished, iterations, discarded) =>
+      val (newFinished, newDiscarded) =
+        status match {
+          case Prop.True =>
+            (finished, discarded)
+          case Prop.False =>
+            (true, discarded)
+          case Prop.Proof =>
+            (true, discarded)
+          case Prop.Undecided =>
+            (discarded + 1 > maxDiscarded, discarded + 1)
+          case Prop.Exception(_) =>
+            (true, discarded)
+        }
+      Stats(newFinished, iterations + 1, newDiscarded)
+  }
+
+  def updateResult
+  (params: ScalacheckParams, discarded: Int)
+  (current: PropTest.Status)
+  (propResult: Prop.Result)
+  : Prop.Status => PropTest.Status = {
+    case Prop.True =>
+      current
+    case Prop.False =>
+      PropTest.Failed(propResult.args, propResult.labels)
+    case Prop.Proof =>
+      PropTest.Proved(propResult.args)
+    case Prop.Undecided if discarded + 1 > params.maxDiscarded =>
+      PropTest.Exhausted
+    case Prop.Undecided =>
+      current
+    case Prop.Exception(e) =>
+      PropTest.PropException(propResult.args, e, propResult.labels)
+  }
+
+  def update(params: ScalacheckParams)(propResult: Prop.Result): PropertyTestState => PropertyTestState = {
+    case PropertyTestState(stats, result) =>
+      PropertyTestState(
+        updateStats(propResult.status, params.maxDiscarded)(stats),
+        updateResult(params, stats.discarded)(result)(propResult)(propResult.status),
+      )
+  }
+
+  def zero: PropertyTestState =
+    PropertyTestState(Stats.zero, PropTest.Passed)
+}
 
 case class PropertyTestResult(success: Boolean, result: PropTest.Result)
 
@@ -32,30 +92,9 @@ case class PropertyTest[F[_]](test: Kleisli[F, Gen.Parameters, Prop.Result])
 
 object PropertyTest
 {
-  def single[F[_]: Monad]
-  (terminate: SignallingRef[F, Boolean])
-  (test: PropertyTest[F])
-  (params: Gen.Parameters)
-  : F[Prop.Result] =
-    for {
-      result <- test.test.run(params)
-      _ <- terminate.set(true).whenA(PropResult.finished(result))
-    } yield result
-
-  def updateState(propResult: Prop.Result): PropertyTestState => PropertyTestState = {
-    case PropertyTestState(finished, discarded) =>
-      propResult.status match {
-        case Prop.True => PropertyTestState(finished, discarded)
-        case Prop.False => PropertyTestState(true, discarded)
-        case Prop.Proof => PropertyTestState(true, discarded)
-        case Prop.Undecided => PropertyTestState(false, discarded)
-        case Prop.Exception(_) => PropertyTestState(true, discarded)
-      }
-  }
-
   def finish[F[_]]: PropertyTestState => Pull[F, PropertyTestResult, Unit] = {
-    case PropertyTestState(_, discarded) =>
-    Pull.output1(PropertyTestResult(true, PropTest.Result(PropTest.Passed, 0, discarded, FreqMap.empty))) *> Pull.done
+    case PropertyTestState(PropertyTestState.Stats(_, iterations, discarded), result) =>
+      Pull.output1(PropertyTestResult(true, PropTest.Result(result, iterations, discarded, FreqMap.empty))) *> Pull.done
   }
 
   def aggregateResults[F[_]]
@@ -66,8 +105,8 @@ object PropertyTest
   : Pull[F, PropertyTestResult, Unit] =
     in.pull.uncons1.flatMap {
       case Some((propResult, rest)) =>
-        val updated = updateState(propResult)(state)
-        if (updated.finished) Pull.eval(terminate.set(true)) >> finish[F](updated)
+        val updated = PropertyTestState.update(params)(propResult)(state)
+        if (updated.stats.finished) Pull.eval(terminate.set(true)) >> finish[F](updated)
         else aggregateResults(terminate)(params)(updated)(rest)
       case None =>
         finish[F](state)
@@ -81,10 +120,10 @@ object PropertyTest
     Stream.range(params.test.minSize, params.test.maxSize, params.sizeStep)
       .interruptWhen(terminate)
       .map(params.gen.withSize)
-      .map(single(terminate)(test))
+      .map(test.test.run)
       .map(Stream.eval)
       .parJoin(params.test.workers)
-      .through(in => aggregateResults(terminate)(params)(PropertyTestState(false, 0))(in).stream)
+      .through(in => aggregateResults(terminate)(params)(PropertyTestState.zero)(in).stream)
 
   def stream[F[_]: Concurrent]
   (params: ScalacheckParams)

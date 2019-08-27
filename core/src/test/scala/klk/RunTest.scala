@@ -36,7 +36,7 @@ extends SimpleTest
       }
     }
     val params = ScalacheckParams.cons(TestParameters.default, Parameters.default.withInitialSeed(10L))
-    PropertyTest.run(TestEffect.io.concurrent)(params)(f)
+    PropertyTest.run(TestEffect.io.concurrentPool)(params)(f)
   }
 }
 
@@ -44,6 +44,6 @@ object PropTest
 extends SimpleTest
 {
   test[IO]("prop").forall { l1: List[Int] =>
-    IO(l1.size < 50)
+    IO(l1.size < 5)
   }
 }

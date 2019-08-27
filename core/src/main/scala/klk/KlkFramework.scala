@@ -15,6 +15,19 @@ extends SubclassFingerprint
     true
 }
 
+object KlkConfigFingerprint
+extends SubclassFingerprint
+{
+  def superclassName: String =
+    "klk.TestConfig"
+
+  def isModule: Boolean =
+    true
+
+  def requireNoArgConstructor: Boolean =
+    true
+}
+
 class KlkFramework
 extends Framework
 {
@@ -22,7 +35,7 @@ extends Framework
     "kallikrein"
 
   def fingerprints: Array[Fingerprint] =
-    Array(KlkFingerprint)
+    Array(KlkFingerprint, KlkConfigFingerprint)
 
   def runner(args0: Array[String], remoteArgs0: Array[String], testClassLoader: ClassLoader): Runner =
     new Runner {
