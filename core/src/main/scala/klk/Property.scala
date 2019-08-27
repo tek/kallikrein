@@ -86,16 +86,26 @@ object PropertyTestState
     PropertyTestState(Stats.zero, PropTest.Passed)
 }
 
-case class PropertyTestResult(success: Boolean, result: PropTest.Result)
+case class PropertyTestResult(success: Boolean, stats: PropertyTestState.Stats, result: PropTest.Result)
 
 object PropertyTestResult
 {
   def noInput: PropertyTestResult =
-    PropertyTestResult(false, PropTest.Result(PropTest.Exhausted, 0, 0, FreqMap.empty))
+    PropertyTestResult(false, PropertyTestState.Stats.zero, PropTest.Result(PropTest.Exhausted, 0, 0, FreqMap.empty))
 
   def resultDetails: PropertyTestResult => KlkResultDetails[Boolean, Boolean] = {
-    case PropertyTestResult(_, _) =>
-      KlkResultDetails.Simple(List("property test"))
+    case PropertyTestResult(_, PropertyTestState.Stats(_, iterations, discarded), result) =>
+      val message: List[String] = result.status match {
+        case PropTest.Exhausted => List(s"exhausted after $iterations iterations, discarding $discarded")
+        case PropTest.Passed => List(s"passed after $iterations iterations")
+        case PropTest.Proved(_) => List(s"proved after $iterations iterations")
+        case PropTest.Failed(args, labels) =>
+          s"failed after $iterations iterations for" :: args.map(_.toString) ::: labels.toList
+        case PropTest.PropException(args, e, labels) =>
+          val exception = e.getMessage :: e.getStackTrace.toList.map(_.toString)
+          "failed with exception" :: args.map(_.toString) ::: labels.toList ::: exception
+      }
+      KlkResultDetails.Simple(message)
   }
 
   def success: PropTest.Status => Boolean = {
@@ -112,9 +122,10 @@ case class PropertyTest[F[_]](test: Kleisli[F, Gen.Parameters, Prop.Result])
 object PropertyTest
 {
   def finish[F[_]]: PropertyTestState => Pull[F, PropertyTestResult, Unit] = {
-    case PropertyTestState(PropertyTestState.Stats(_, iterations, discarded), status) =>
+    case PropertyTestState(stats @ PropertyTestState.Stats(_, iterations, discarded), status) =>
       val result = PropertyTestResult(
         PropertyTestResult.success(status),
+        stats,
         PropTest.Result(status, iterations, discarded, FreqMap.empty),
       )
       Pull.output1(result) *> Pull.done
