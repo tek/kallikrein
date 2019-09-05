@@ -1,7 +1,5 @@
 package klk
 
-import scala.util.control.NonFatal
-
 import cats.Functor
 import cats.effect.{Concurrent, IO, Resource, Sync}
 import cats.implicits._
@@ -12,14 +10,14 @@ import StringColors.color
 
 case class TestLog(loggers: Array[Logger])
 {
-  def info(lines: List[String]): Unit =
-    loggers.foreach(l => lines.foreach(l.info))
+  def info[F[_]: Sync](lines: List[String]): F[Unit] =
+    loggers.toList.traverse_(logger => lines.traverse_(line => Sync[F].delay(logger.info(line))))
 }
 
-trait TestReporter[A, B]
+trait TestReporter
 {
-  def result(log: TestLog): String => Boolean => Unit
-  def failure(log: TestLog): KlkResultDetails[A, B] => Unit
+  def result[F[_]: Sync](log: TestLog): String => Boolean => F[Unit]
+  def failure[F[_]: Sync, E, A](log: TestLog): KlkResultDetails[E, A] => F[Unit]
 }
 
 object TestReporter
@@ -36,7 +34,7 @@ object TestReporter
       .reverse
       .map(_.toString)
 
-  def formatFailure[A, B]: KlkResultDetails[A, B] => List[String] = {
+  def formatFailure[E, A]: KlkResultDetails[E, A] => List[String] = {
     case KlkResultDetails.NoDetails() =>
       List("test failed")
     case KlkResultDetails.Simple(info) =>
@@ -55,30 +53,40 @@ object TestReporter
   def formatResult(desc: String)(success: Boolean): List[String] =
     List(s"${successSymbol(success)} $desc")
 
-  def stdout[A, B]: TestReporter[A, B] =
-    new TestReporter[A, B] {
-      def result(log: TestLog): String => Boolean => Unit =
-        desc => (log.info _).compose(formatResult(desc))
+  def report[F[_]: Sync, E, A]
+  (reporter: TestReporter, log: TestLog)
+  (desc: String)
+  (result: KlkResult[E, A])
+  : F[Unit] =
+    reporter.result[F](log).apply(desc)(result.success) *>
+    reporter.failure[F, E, A](log).apply(result.details).unlessA(result.success)
 
-      def failure(log: TestLog): KlkResultDetails[A, B] => Unit =
-        (log.info _).compose(indent(2)).compose(formatFailure)
+
+  def stdout: TestReporter =
+    new TestReporter {
+      def result[F[_]: Sync](log: TestLog): String => Boolean => F[Unit] =
+        desc => (log.info[F] _).compose(formatResult(desc))
+
+      def failure[F[_]: Sync, E, A](log: TestLog): KlkResultDetails[E, A] => F[Unit] =
+        (log.info[F] _).compose(indent(2)).compose(formatFailure)
     }
 }
 
 trait TestEffect[F[_]]
 {
-  def run[A, B](thunk: F[KlkResult[A, B]]): KlkResult[A, B]
+  def run[A](thunk: F[A]): A
   def concurrentPool: Resource[F, Concurrent[F]]
   def sync: Sync[F]
 }
 
+// TODO change back to KlkResult
 object TestEffect
 {
   implicit def io: TestEffect[IO] =
     new TestEffect[IO] {
-      def run[A, B](thunk: IO[KlkResult[A, B]]): KlkResult[A, B] =
+      def run[A](thunk: IO[A]): A =
         thunk
-          .recover { case NonFatal(a) => KlkResult(false, KlkResultDetails.Fatal[A, B](a)) }
+          // .recover { case NonFatal(a) => KlkResult(false, KlkResultDetails.Fatal[E, A](a)) }
           .unsafeRunSync
 
       def concurrentPool: Resource[IO, Concurrent[IO]] =
@@ -114,11 +122,6 @@ object TestResult
         output.map(result => KlkResult(result.success, PropertyTestResult.resultDetails(result)))
       }
     }
-}
-
-trait TestParams[F[_], Thunk, Params, Output]
-{
-  def func(thunk: Thunk): Params => F[Output]
 }
 
 case class TestFunction[F[_], Output](thunk: F[Output])

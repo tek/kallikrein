@@ -18,3 +18,9 @@ object KlkResultDetails
 }
 
 case class KlkResult[A, B](success: Boolean, details: KlkResultDetails[A, B])
+
+object KlkResult
+{
+  def bool(success: Boolean): KlkResult[Boolean, Boolean] =
+    KlkResult(success, KlkResultDetails.NoDetails())
+}

@@ -2,11 +2,24 @@ package klk
 
 import sbt.testing.{Fingerprint, Framework, Runner, SubclassFingerprint, Task, TaskDef}
 
-object KlkFingerprint
+object KlkClassFingerprint
 extends SubclassFingerprint
 {
   def superclassName: String =
-    "klk.Test"
+    "klk.TestInterface"
+
+  def isModule: Boolean =
+    false
+
+  def requireNoArgConstructor: Boolean =
+    true
+}
+
+object KlkModuleFingerprint
+extends SubclassFingerprint
+{
+  def superclassName: String =
+    "klk.TestInterface"
 
   def isModule: Boolean =
     true
@@ -35,7 +48,7 @@ extends Framework
     "kallikrein"
 
   def fingerprints: Array[Fingerprint] =
-    Array(KlkFingerprint, KlkConfigFingerprint)
+    Array(KlkClassFingerprint, KlkModuleFingerprint, KlkConfigFingerprint)
 
   def runner(args0: Array[String], remoteArgs0: Array[String], testClassLoader: ClassLoader): Runner =
     new Runner {
@@ -49,6 +62,6 @@ extends Framework
         remoteArgs0
 
       def tasks(x: Array[TaskDef]): Array[Task] =
-        x.flatMap(KlkTask.fromTaskDef(testClassLoader))
+        KlkTasks.process(testClassLoader)(x)
     }
 }

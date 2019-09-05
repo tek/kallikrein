@@ -14,11 +14,11 @@ trait SimpleAssertions
     KlkResult(eql.eqv(target, candidate), KlkResultDetails.Complex(List("values are not equal"), target, candidate))
 }
 
-trait SimpleTest
-extends Test
+trait SimpleTest[F[_]]
+extends Test[F]
 with SimpleAssertions
 {
-  def reporter[A, B]: TestReporter[A, B] =
+  def reporter: TestReporter =
     TestReporter.stdout
 
   implicit def timer: Timer[IO] =

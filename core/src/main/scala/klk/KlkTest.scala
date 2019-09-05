@@ -1,18 +1,27 @@
 package klk
 
-case class KlkTest[F[_], A, B](desc: String, thunk: F[KlkResult[A, B]], runner: TestEffect[F])
+import cats.Functor
+import cats.effect.{Bracket, Resource}
+import cats.implicits._
+
+case class FinalResult()
+
+case class KlkTest[F[_], R](desc: String, thunk: TestLog => R => F[FinalResult])
 
 object KlkTest
 {
-  def logResult[A, B](reporter: TestReporter[A, B], log: TestLog)(desc: String, result: KlkResult[A, B]): Unit = {
-    reporter.result(log)(desc)(result.success)
-    if (!result.success) reporter.failure(log)(result.details)
-  }
+  def runPlain[F[_]: Functor]
+  (log: TestLog)
+  (effect: TestEffect[F])
+  (test: KlkTest[F, Unit])
+  : FinalResult =
+    effect.run(test.thunk(log)(()).as(FinalResult()))
 
-  def run[F[_], A, B](reporter: TestReporter[A, B], log: TestLog): KlkTest[F, A, B] => KlkResult[A, B] = {
-    case KlkTest(desc, thunk, runner) =>
-      val result = runner.run(thunk)
-      logResult(reporter, log)(desc, result)
-      result
-  }
+  def runResource[F[_]: Bracket[?[_], Throwable], R]
+  (log: TestLog)
+  (effect: TestEffect[F])
+  (resource: Resource[F, R])
+  (tests: List[KlkTest[F, R]])
+  : FinalResult =
+    effect.run(resource.use(r => tests.traverse_(_.thunk(log)(r))).as(FinalResult()))
 }
