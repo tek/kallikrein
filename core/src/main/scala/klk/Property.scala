@@ -115,16 +115,6 @@ object PropertyTestResult
     case PropTest.Proved(_) => true
     case PropTest.Passed => true
   }
-
-  implicit def TestInput_PropertyTest[F[_], Thunk]
-  (implicit propGen: PropGen[F, Thunk], effect: TestEffect[F])
-  : TestInput.Aux[F, Thunk, PropertyTestResult] =
-    new TestInput[F, Thunk] {
-      type Output = PropertyTestResult
-
-      def bracket(thunk: Thunk): TestFunction[F, PropertyTestResult] =
-        PropGen(effect.concurrentPool)(thunk)(effect.sync, propGen)
-    }
 }
 
 case class PropertyTest[F[_]](test: Kleisli[F, Gen.Parameters, Prop.Result])

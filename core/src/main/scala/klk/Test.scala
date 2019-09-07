@@ -91,12 +91,12 @@ case class TestBuilder[F[_], RR <: HList]
   (thunk: Thunk)
   (
     implicit
-    input: TestInput.Aux[F, Thunk, PropertyTestResult],
-    result: TestResult[F, PropertyTestResult, Expected, Actual],
+    propGen: PropGen[F, Thunk],
+    result: TestResult[F, PropertyTestResult, Boolean, Boolean],
     effect: TestEffect[F],
   )
   : Unit =
-    tests.plain(PlainTest.forall(input, result, reporter)(desc)(thunk)(effect.sync))
+    tests.plain(PlainTest.forall(TestInput.TestInput_PropertyTest, result, reporter)(desc)(thunk)(effect.sync))
 
   def resource[R](r: Resource[F, R]): TestBuilder[F, Resource[F, R] :: RR] =
     TestBuilder(tests, desc)(reporter)(TestResources(r :: resources.resources))
