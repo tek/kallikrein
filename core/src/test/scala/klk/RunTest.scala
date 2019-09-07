@@ -60,7 +60,9 @@ extends SimpleTest[IO]
 class ResTest
 extends SimpleTest[IO]
 {
-  val res: Resource[IO, Int] = Resource.pure(1)
+  val res1: Resource[IO, Int] = Resource.pure(1)
 
-  test("resource").resource(res)((i: Int) => IO.pure(i == 1))
+  val res2: Resource[IO, Int] = Resource.pure(1)
+
+  test("resource").resource(res1).resource(res2)((i: Int) => (j: Int) => IO.pure(i == j))
 }
