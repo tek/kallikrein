@@ -12,13 +12,13 @@
 
 ```scala
 class SomeTest
-extends SimpleTest[IO]
+extends klk.SimpleTest[IO]
 {
   test("description")(IO.pure(1 == 1))
 }
 ```
 
-Tests are added by calling the `test` function in a class inheriting `SimpleTest[F]`, where `F[_]` is an effect that
+Tests are added by calling the `test` function in a class inheriting `klk.SimpleTest[F]`, where `F[_]` is an effect that
 implements `cats.effect.Sync`.
 
 Assertions are returned from the test thunk and can be anything, as long as there is an instance for `klk.TestResult`.
@@ -31,7 +31,7 @@ Tests can depend on shared and individual resources that will be supplied by the
 
 ```scala
 class SomeTest
-extends SimpleTest[IO]
+extends klk.SimpleTest[IO]
 {
   val res1: Resource[IO, Int] = Resource.pure(1)
 
@@ -58,7 +58,7 @@ Scalacheck can be used in a test by calling the `forall` method on a test builde
 
 ```scala
 class SomeTest
-extends SimpleTest[IO]
+extends klk.SimpleTest[IO]
 {
   test("are all lists of integers shorter than 5 elements?").forall((l1: List[Int]) => IO(l1.size < 5))
 }
