@@ -79,13 +79,12 @@ case class TestBuilder[F[_], RR <: HList]
   (thunk: Thunk)
   (
     implicit
-    strip: StripResources.Aux[RR, Thunk, Thunk0],
-    input: TestInput.Aux[F, Thunk0, Output],
+    strip: StripResources.Aux[RR, Thunk, F[Output]],
     result: TestResult[F, Output, Expected, Actual],
     effect: TestEffect[F],
   )
   : Unit =
-    tests.plain(PlainTest(input, result, reporter)(desc)(strip(resources)(thunk))(effect.sync))
+    tests.plain(PlainTest(result, reporter)(desc)(TestFunction(strip(resources)(thunk)))(effect.sync))
 
   def forallNoShrink[Thunk, Thunk0, Expected, Actual]
   (thunk: Thunk)
@@ -113,15 +112,14 @@ case class SharedResource[F[_], R]
 
   def test[Thunk, Output, Expected, Actual]
   (desc: String)
-  (thunk: R => Thunk)
+  (thunk: R => F[Output])
   (
     implicit
-    input: TestInput.Aux[F, Thunk, Output],
     result: TestResult[F, Output, Expected, Actual],
     sync: Sync[F],
   )
   : Unit =
-    tests += ResourceTest(input, result, reporter)(desc)(thunk)
+    tests += ResourceTest(result, reporter)(desc)(res => TestFunction(thunk(res)))
 }
 
 trait TestInterface
@@ -155,14 +153,14 @@ extends TestInterface
 object Test
 {
   def execute[F[_]: Sync, T, P, O, E, A, Res]
-  (input: TestInput.Aux[F, T, O], result: TestResult[F, O, E, A], reporter: TestReporter)
+  (result: TestResult[F, O, E, A], reporter: TestReporter)
   (desc: String)
-  (thunk: Res => T)
+  (thunk: Res => TestFunction[F, O])
   (log: TestLog)
   (res: Res)
   : F[FinalResult] =
     for {
-      testResult <- result.handle(TestFunction.execute(input.bracket(thunk(res))))
+      testResult <- result.handle(TestFunction.execute(thunk(res)))
       _ <- TestReporter.report[F, E, A](reporter, log)(desc)(testResult)
     } yield FinalResult()
 
@@ -173,20 +171,17 @@ object Test
   (log: TestLog)
   (res: Res)
   : F[FinalResult] =
-    for {
-      testResult <- result.handle(TestFunction.execute(PropGen.noShrink(effect.concurrentPool)(thunk(res))(effect.sync, propGen)))
-      _ <- TestReporter.report[F, E, A](reporter, log)(desc)(testResult)
-    } yield FinalResult()
+    execute(result, reporter)(desc)((res: Res) => PropGen.noShrink(effect.concurrentPool)(thunk(res))(effect.sync, propGen))(log)(res)
 }
 
 object PlainTest
 {
   def apply[F[_]: Sync, T, P, O, E, A]
-  (input: TestInput.Aux[F, T, O], result: TestResult[F, O, E, A], reporter: TestReporter)
+  (result: TestResult[F, O, E, A], reporter: TestReporter)
   (desc: String)
-  (thunk: T)
+  (thunk: TestFunction[F, O])
   : KlkTest[F, Unit] =
-    KlkTest(desc, Test.execute(input, result, reporter)(desc)(_ => thunk))
+    KlkTest(desc, Test.execute(result, reporter)(desc)(_ => thunk))
 
   def forallNoShrink[F[_]: Sync, T, P, E, A]
   (propGen: PropGen[F, T], result: TestResult[F, PropertyTestResult, E, A], reporter: TestReporter, effect: TestEffect[F])
@@ -202,23 +197,23 @@ object PlainTest
 object ResourceTest
 {
   def execute[F[_]: Sync, T, P, O, E, A, Res]
-  (input: TestInput.Aux[F, T, O], result: TestResult[F, O, E, A], reporter: TestReporter)
+  (result: TestResult[F, O, E, A], reporter: TestReporter)
   (desc: String)
-  (thunk: Res => T)
+  (thunk: Res => TestFunction[F, O])
   (log: TestLog)
   (res: Res)
   : F[FinalResult] =
     for {
-      testResult <- result.handle(TestFunction.execute(input.bracket(thunk(res))))
+      testResult <- result.handle(TestFunction.execute(thunk(res)))
       _ <- TestReporter.report[F, E, A](reporter, log)(desc)(testResult)
     } yield FinalResult()
 
   def apply[F[_]: Sync, T, P, O, E, A, Res]
-  (input: TestInput.Aux[F, T, O], result: TestResult[F, O, E, A], reporter: TestReporter)
+  (result: TestResult[F, O, E, A], reporter: TestReporter)
   (desc: String)
-  (thunk: Res => T)
+  (thunk: Res => TestFunction[F, O])
   : KlkTest[F, Res] =
-    KlkTest(desc, execute(input, result, reporter)(desc)(thunk))
+    KlkTest(desc, execute(result, reporter)(desc)(thunk))
 
 //   def forall[F[_], T, P, O, E, A, Res]
 //   (input: PropGen[F, T], result: TestResult[F, PropertyTestResult, E, A], effect: TestEffect[F])

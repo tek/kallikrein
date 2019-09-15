@@ -133,23 +133,3 @@ object TestFunction
       f
   }
 }
-
-trait TestInput[F[_], Thunk]
-{
-  type Output
-
-  def bracket(f: Thunk): TestFunction[F, Output]
-}
-
-object TestInput
-{
-  type Aux[F[_], Thunk, Output0] = TestInput[F, Thunk] { type Output = Output0 }
-
-  implicit def TestInput_Any[F[_], Output0]: TestInput.Aux[F, F[Output0], Output0] =
-    new TestInput[F, F[Output0]] {
-      type Output = Output0
-      def bracket(f: F[Output]): TestFunction[F, Output] = {
-        TestFunction(f)
-      }
-    }
-}
