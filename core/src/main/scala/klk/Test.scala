@@ -164,14 +164,18 @@ object Test
       _ <- TestReporter.report[F, E, A](reporter, log)(desc)(testResult)
     } yield FinalResult()
 
-  def forallNoShrink[F[_]: Sync, T, P, E, A, Res]
+  def noShrinkThunk[F[_], Res, T](propGen: PropGen[F, T], effect: TestEffect[F])
+  : (Res => T) => Res => TestFunction[F, PropertyTestResult] =
+    thunk => res => PropGen.noShrink(effect.concurrentPool)(thunk(res))(effect.sync, propGen)
+
+  def forallNoShrink[F[_]: Sync, T, P, O, E, A, Res]
   (propGen: PropGen[F, T], result: TestResult[F, PropertyTestResult, E, A], reporter: TestReporter, effect: TestEffect[F])
   (desc: String)
   (thunk: Res => T)
   (log: TestLog)
   (res: Res)
   : F[FinalResult] =
-    execute(result, reporter)(desc)((res: Res) => PropGen.noShrink(effect.concurrentPool)(thunk(res))(effect.sync, propGen))(log)(res)
+    execute(result, reporter)(desc)(noShrinkThunk(propGen, effect)(thunk))(log)(res)
 }
 
 object PlainTest
@@ -196,33 +200,20 @@ object PlainTest
 
 object ResourceTest
 {
-  def execute[F[_]: Sync, T, P, O, E, A, Res]
-  (result: TestResult[F, O, E, A], reporter: TestReporter)
-  (desc: String)
-  (thunk: Res => TestFunction[F, O])
-  (log: TestLog)
-  (res: Res)
-  : F[FinalResult] =
-    for {
-      testResult <- result.handle(TestFunction.execute(thunk(res)))
-      _ <- TestReporter.report[F, E, A](reporter, log)(desc)(testResult)
-    } yield FinalResult()
-
   def apply[F[_]: Sync, T, P, O, E, A, Res]
   (result: TestResult[F, O, E, A], reporter: TestReporter)
   (desc: String)
   (thunk: Res => TestFunction[F, O])
   : KlkTest[F, Res] =
-    KlkTest(desc, execute(result, reporter)(desc)(thunk))
+    KlkTest(desc, Test.execute(result, reporter)(desc)(thunk))
 
-//   def forall[F[_], T, P, O, E, A, Res]
-//   (input: PropGen[F, T], result: TestResult[F, PropertyTestResult, E, A], effect: TestEffect[F])
-//   (desc: String)
-//   (thunk: Res => T)
-//   : SharedResourceTest[F, Res, E, A] =
-//     SharedResourceTest(
-//       desc,
-//       log => res => result.handle(TestFunction.execute(PropGen(effect.concurrentPool)(thunk(res))(effect.sync, input))),
-//       effect,
-//     )
+  def forall[F[_]: Sync, T, P, O, E, A, Res]
+  (propGen: PropGen[F, T], result: TestResult[F, PropertyTestResult, E, A], reporter: TestReporter, effect: TestEffect[F])
+  (desc: String)
+  (thunk: Res => T)
+  : KlkTest[F, Res] =
+    KlkTest(
+      desc,
+      Test.forallNoShrink(propGen, result, reporter, effect)(desc)(thunk),
+    )
 }
