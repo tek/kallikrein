@@ -43,7 +43,7 @@ extends SimpleTest[IO]
 class PropTest
 extends SimpleTest[IO]
 {
-  test("are all lists of integers shorter than 5 elements?").forall((l1: List[Int]) => IO(l1.size < 5))
+  test("are all lists of integers shorter than 5 elements?").forallNoShrink((l1: List[Int]) => IO(l1.size < 5))
 }
 
 class SharedResTest

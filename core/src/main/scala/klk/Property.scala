@@ -203,29 +203,52 @@ object PropResult
 
 trait PropGen[F[_], Thunk]
 {
-  def thunk(f: Thunk): PropertyTest[F]
+  def thunk(runner: PropGen.Runner[F])(f: Thunk): PropertyTest[F]
 }
 
 object PropGen
 {
+  trait Runner[F[_]]
+  {
+    def apply[A]: (A => PropertyTest[F]) => Arbitrary[A] => (A => Pretty) => PropertyTest[F]
+  }
+
+  object Runner
+  {
+    case class NoShrink[F[_]]()(implicit sync: Sync[F])
+    extends Runner[F]
+    {
+      def apply[A]: (A => PropertyTest[F]) => Arbitrary[A] => (A => Pretty) => PropertyTest[F] =
+        f => implicit arb => implicit pp => ForAll.noShrink(f)
+    }
+  }
+
   implicit def PropGen_Output[F[_]: Functor, P](implicit pv: P => Prop): PropGen[F, F[P]] =
     new PropGen[F, F[P]] {
-      def thunk(f: F[P]): PropertyTest[F] =
+      def thunk(runner: PropGen.Runner[F])(f: F[P]): PropertyTest[F] =
         PropertyTest(Kleisli(params => f.map(p => pv(p)(params))))
     }
 
-  implicit def PropGen_f[F[_]: Sync, Thunk, P: Arbitrary]
-  (implicit next: PropGen[F, Thunk], pp1: P => Pretty)
+  implicit def PropGen_f[F[_]: Sync, Thunk, P]
+  (implicit next: PropGen[F, Thunk], arb: Arbitrary[P], pp: (P => Pretty))
   : PropGen[F, P => Thunk] =
     new PropGen[F, P => Thunk] {
-      def thunk(f: P => Thunk): PropertyTest[F] =
-        ForAll.noShrink((p: P) => next.thunk(f(p)))
+      def thunk(runner: PropGen.Runner[F])(f: P => Thunk): PropertyTest[F] =
+        runner.apply((p: P) => next.thunk(runner)(f(p)))(arb)(pp)
     }
 
   def apply[F[_]: Sync, Thunk]
   (concurrent: Resource[F, Concurrent[F]])
+  (runner: Runner[F])
   (thunk: Thunk)
   (implicit propGen: PropGen[F, Thunk])
   : TestFunction[F, PropertyTestResult] =
-    TestFunction(PropertyTest.run(concurrent)(ScalacheckParams.default)(propGen.thunk(thunk)))
+    TestFunction(PropertyTest.run(concurrent)(ScalacheckParams.default)(propGen.thunk(runner)(thunk)))
+
+  def noShrink[F[_]: Sync, Thunk]
+  (concurrent: Resource[F, Concurrent[F]])
+  (thunk: Thunk)
+  (implicit propGen: PropGen[F, Thunk])
+  : TestFunction[F, PropertyTestResult] =
+    apply(concurrent)(Runner.NoShrink())(thunk)
 }

@@ -87,16 +87,17 @@ case class TestBuilder[F[_], RR <: HList]
   : Unit =
     tests.plain(PlainTest(input, result, reporter)(desc)(strip(resources)(thunk))(effect.sync))
 
-  def forall[Thunk, Expected, Actual]
+  def forallNoShrink[Thunk, Thunk0, Expected, Actual]
   (thunk: Thunk)
   (
     implicit
-    propGen: PropGen[F, Thunk],
+    strip: StripResources.Aux[RR, Thunk, Thunk0],
+    propGen: PropGen[F, Thunk0],
     result: TestResult[F, PropertyTestResult, Boolean, Boolean],
     effect: TestEffect[F],
   )
   : Unit =
-    tests.plain(PlainTest.forall(TestInput.TestInput_PropertyTest, result, reporter)(desc)(thunk)(effect.sync))
+    tests.plain(PlainTest.forallNoShrink(propGen, result, reporter, effect)(desc)(strip(resources)(thunk))(effect.sync))
 
   def resource[R](r: Resource[F, R]): TestBuilder[F, Resource[F, R] :: RR] =
     TestBuilder(tests, desc)(reporter)(TestResources(r :: resources.resources))
@@ -165,6 +166,17 @@ object Test
       _ <- TestReporter.report[F, E, A](reporter, log)(desc)(testResult)
     } yield FinalResult()
 
+  def forallNoShrink[F[_]: Sync, T, P, E, A, Res]
+  (propGen: PropGen[F, T], result: TestResult[F, PropertyTestResult, E, A], reporter: TestReporter, effect: TestEffect[F])
+  (desc: String)
+  (thunk: Res => T)
+  (log: TestLog)
+  (res: Res)
+  : F[FinalResult] =
+    for {
+      testResult <- result.handle(TestFunction.execute(PropGen.noShrink(effect.concurrentPool)(thunk(res))(effect.sync, propGen)))
+      _ <- TestReporter.report[F, E, A](reporter, log)(desc)(testResult)
+    } yield FinalResult()
 }
 
 object PlainTest
@@ -176,14 +188,14 @@ object PlainTest
   : KlkTest[F, Unit] =
     KlkTest(desc, Test.execute(input, result, reporter)(desc)(_ => thunk))
 
-  def forall[F[_]: Sync, T, P, E, A]
-  (input: TestInput.Aux[F, T, PropertyTestResult], result: TestResult[F, PropertyTestResult, E, A], reporter: TestReporter)
+  def forallNoShrink[F[_]: Sync, T, P, E, A]
+  (propGen: PropGen[F, T], result: TestResult[F, PropertyTestResult, E, A], reporter: TestReporter, effect: TestEffect[F])
   (desc: String)
   (thunk: T)
   : KlkTest[F, Unit] =
     KlkTest(
       desc,
-      Test.execute(input, result, reporter)(desc)(_ => thunk),
+      Test.forallNoShrink(propGen, result, reporter, effect)(desc)(_ => thunk),
     )
 }
 

@@ -141,7 +141,7 @@ trait TestInput[F[_], Thunk]
   def bracket(f: Thunk): TestFunction[F, Output]
 }
 
-trait TestInputLowPriority
+object TestInput
 {
   type Aux[F[_], Thunk, Output0] = TestInput[F, Thunk] { type Output = Output0 }
 
@@ -151,19 +151,5 @@ trait TestInputLowPriority
       def bracket(f: F[Output]): TestFunction[F, Output] = {
         TestFunction(f)
       }
-    }
-}
-
-object TestInput
-extends TestInputLowPriority
-{
-  implicit def TestInput_PropertyTest[F[_], Thunk]
-  (implicit propGen: PropGen[F, Thunk], effect: TestEffect[F])
-  : TestInput.Aux[F, Thunk, PropertyTestResult] =
-    new TestInput[F, Thunk] {
-      type Output = PropertyTestResult
-
-      def bracket(thunk: Thunk): TestFunction[F, PropertyTestResult] =
-        PropGen(effect.concurrentPool)(thunk)(effect.sync, propGen)
     }
 }
