@@ -1,12 +1,16 @@
 package klk
 
-import cats.Functor
+import java.util.concurrent.{ExecutorService, ThreadPoolExecutor}
+
+import scala.concurrent.ExecutionContext
+
+import cats.{Applicative, Functor}
 import cats.data.Kleisli
-import cats.effect.{Concurrent, Resource, Sync}
+import cats.effect.{Concurrent, Sync}
 import cats.implicits._
 import fs2.{Pull, Stream}
 import fs2.concurrent.SignallingRef
-import org.scalacheck.{Arbitrary, ForAll, Gen, Prop, Test => PropTest}
+import org.scalacheck.{Arbitrary, ForAllNoShrink, ForAllShrink, Gen, Prop, Test => PropTest}
 import org.scalacheck.Test.{Parameters => TestParameters}
 import org.scalacheck.util.{FreqMap, Pretty}
 
@@ -168,14 +172,33 @@ object PropertyTest
       result <- concurrent(terminate)(params)(test)
     } yield result
 
+  def discardingPool[F[_]: Sync]: F[ExecutorService] =
+    Concurrency.fixedPool.flatMap {
+      case es: ThreadPoolExecutor =>
+        Sync[F].delay(es.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy)).as(es)
+      case es =>
+        Sync[F].pure(es)
+    }
+
   def run[F[_]: Sync]
-  (concurrent: Resource[F, Concurrent[F]])
+  (concurrent: ExecutionContext => Concurrent[F])
   (params: ScalacheckParams)
   (test: PropertyTest[F])
   : F[PropertyTestResult] =
-    concurrent.use { implicit c =>
+    Concurrency.ec[F](discardingPool[F]).map(concurrent).use { implicit c =>
       stream(params)(test).compile.last.map(_.getOrElse(PropertyTestResult.noInput))
     }
+
+  type K[F[_], A] = Kleisli[F, Gen.Parameters, A]
+
+  class PropertyTestKleisli[F[_]: Applicative]
+  {
+    def pure[A](a: A): K[F, A] =
+      Kleisli.pure(a)
+  }
+
+  def kleisli[F[_]: Applicative]: PropertyTestKleisli[F] =
+    new PropertyTestKleisli[F]
 }
 
 object PropStatus
@@ -201,54 +224,60 @@ object PropResult
     PropStatus.finished(result.status)
 }
 
-trait PropGen[F[_], Thunk]
+trait PropRunner[F[_], Trans, A]
 {
-  def thunk(runner: PropGen.Runner[F])(f: Thunk): PropertyTest[F]
+  def apply(input: A => PropertyTest[F]): PropertyTest[F]
+}
+
+object PropRunner
+{
+  type Full
+  type Shrink
+
+  implicit def PropRunner_Full[F[_]: Sync, A]
+  (implicit arbitrary: Arbitrary[A], pp1: A => Pretty)
+  : PropRunner[F, Full, A] =
+    new PropRunner[F, Full, A] {
+      def apply(f: A => PropertyTest[F]): PropertyTest[F] =
+        ForAllNoShrink(f)
+    }
+
+  implicit def PropRunner_Shrink[F[_]: Sync, A]
+  (implicit arbitrary: Arbitrary[A], pp1: A => Pretty)
+  : PropRunner[F, Shrink, A] =
+    new PropRunner[F, Shrink, A] {
+      def apply(f: A => PropertyTest[F]): PropertyTest[F] =
+        ForAllShrink(f)
+    }
+}
+
+trait PropGen[F[_], Thunk, Trans]
+{
+  def thunk(f: Thunk): PropertyTest[F]
 }
 
 object PropGen
 {
-  trait Runner[F[_]]
-  {
-    def apply[A]: (A => PropertyTest[F]) => Arbitrary[A] => (A => Pretty) => PropertyTest[F]
-  }
-
-  object Runner
-  {
-    case class NoShrink[F[_]]()(implicit sync: Sync[F])
-    extends Runner[F]
-    {
-      def apply[A]: (A => PropertyTest[F]) => Arbitrary[A] => (A => Pretty) => PropertyTest[F] =
-        f => implicit arb => implicit pp => ForAll.noShrink(f)
-    }
-  }
-
-  implicit def PropGen_Output[F[_]: Functor, P](implicit pv: P => Prop): PropGen[F, F[P]] =
-    new PropGen[F, F[P]] {
-      def thunk(runner: PropGen.Runner[F])(f: F[P]): PropertyTest[F] =
+  implicit def PropGen_Output[F[_]: Functor, P, Trans]
+  (implicit pv: P => Prop)
+  : PropGen[F, F[P], Trans] =
+    new PropGen[F, F[P], Trans] {
+      def thunk(f: F[P]): PropertyTest[F] =
         PropertyTest(Kleisli(params => f.map(p => pv(p)(params))))
     }
 
-  implicit def PropGen_f[F[_]: Sync, Thunk, P]
-  (implicit next: PropGen[F, Thunk], arb: Arbitrary[P], pp: (P => Pretty))
-  : PropGen[F, P => Thunk] =
-    new PropGen[F, P => Thunk] {
-      def thunk(runner: PropGen.Runner[F])(f: P => Thunk): PropertyTest[F] =
-        runner.apply((p: P) => next.thunk(runner)(f(p)))(arb)(pp)
+  implicit def PropGen_f[F[_]: Sync, Thunk, P, Trans]
+  (implicit next: PropGen[F, Thunk, Trans], run: PropRunner[F, Trans, P])
+  : PropGen[F, P => Thunk, Trans] =
+    new PropGen[F, P => Thunk, Trans] {
+      def thunk(f: P => Thunk): PropertyTest[F] =
+        run((p: P) => next.thunk(f(p)))
     }
 
-  def apply[F[_]: Sync, Thunk]
-  (concurrent: Resource[F, Concurrent[F]])
-  (runner: Runner[F])
+  def apply[F[_]: Sync, Thunk, Trans]
+  (concurrent: ExecutionContext => Concurrent[F])
   (thunk: Thunk)
-  (implicit propGen: PropGen[F, Thunk])
+  (implicit propGen: PropGen[F, Thunk, Trans])
   : TestFunction[F, PropertyTestResult] =
-    TestFunction(PropertyTest.run(concurrent)(ScalacheckParams.default)(propGen.thunk(runner)(thunk)))
-
-  def noShrink[F[_]: Sync, Thunk]
-  (concurrent: Resource[F, Concurrent[F]])
-  (thunk: Thunk)
-  (implicit propGen: PropGen[F, Thunk])
-  : TestFunction[F, PropertyTestResult] =
-    apply(concurrent)(Runner.NoShrink())(thunk)
+    TestFunction(PropertyTest.run(concurrent)(ScalacheckParams.default)(propGen.thunk(thunk)))
 }

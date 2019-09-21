@@ -4,7 +4,7 @@ import java.util.concurrent.{ExecutorService, Executors}
 
 import scala.concurrent.ExecutionContext
 
-import cats.effect.{ContextShift, IO, Resource}
+import cats.effect.{ContextShift, IO, Resource, Sync}
 import fs2.Stream
 
 object Concurrency
@@ -12,21 +12,21 @@ object Concurrency
   val defaultNum: Int =
     Runtime.getRuntime.availableProcessors
 
-  def fixedPoolWith(num: Int): IO[ExecutorService] =
-    IO(Executors.newFixedThreadPool(num))
+  def fixedPoolWith[F[_]: Sync](num: Int): F[ExecutorService] =
+    Sync[F].delay(Executors.newFixedThreadPool(num))
 
-  def ec(pool: IO[ExecutorService]): Resource[IO, ExecutionContext] =
-    Resource.make(pool)(es => IO(es.shutdown()))
+  def ec[F[_]: Sync](pool: F[ExecutorService]): Resource[F, ExecutionContext] =
+    Resource.make(pool)(es => Sync[F].delay(es.shutdown()))
       .map(ExecutionContext.fromExecutorService)
 
-  def fixedPool: IO[ExecutorService] =
+  def fixedPool[F[_]: Sync]: F[ExecutorService] =
     fixedPoolWith(defaultNum)
 
   def fixedPoolEc: Resource[IO, ExecutionContext] =
-    ec(fixedPool)
+    ec(fixedPool[IO])
 
   def fixedPoolEcWith(num: Int): Resource[IO, ExecutionContext] =
-    ec(fixedPoolWith(num))
+    ec(fixedPoolWith[IO](num))
 
   def fixedPoolEcStream: Stream[IO, ExecutionContext] =
     Stream.resource(fixedPoolEc)
@@ -36,10 +36,10 @@ object Concurrency
       .map(IO.contextShift(_))
 
   def fixedPoolCsWith(num: Int): Resource[IO, ContextShift[IO]] =
-    cs(fixedPoolWith(num))
+    cs(fixedPoolWith[IO](num))
 
   def fixedPoolCs: Resource[IO, ContextShift[IO]] =
-    cs(fixedPool)
+    cs(fixedPool[IO])
 
   def fixedPoolCsStreamWith(num: Int): Stream[IO, ContextShift[IO]] =
     Stream.resource(fixedPoolCsWith(num))

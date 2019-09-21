@@ -5,7 +5,7 @@ import scala.concurrent.duration.DurationInt
 import cats.data.Kleisli
 import cats.effect.{IO, Resource}
 import cats.implicits._
-import org.scalacheck.ForAll
+import org.scalacheck.ForAllNoShrink
 import org.scalacheck.Gen.Parameters
 import org.scalacheck.Test.{Parameters => TestParameters}
 
@@ -30,8 +30,8 @@ class ForAllTest
 extends SimpleTest[IO]
 {
   test("forall") {
-    val f: PropertyTest[IO] = ForAll.noShrink { (a: Int) =>
-      ForAll.noShrink { (b: Int) =>
+    val f: PropertyTest[IO] = ForAllNoShrink { (a: Int) =>
+      ForAllNoShrink { (b: Int) =>
         PropertyTest(Kleisli.pure(PropResult.bool(a != b)))
       }
     }
@@ -43,7 +43,13 @@ extends SimpleTest[IO]
 class PropTest
 extends SimpleTest[IO]
 {
-  test("are all lists of integers shorter than 5 elements?").forallNoShrink((l1: List[Int]) => IO(l1.size < 5))
+  test("are all lists of integers shorter than 5 elements?").forallNoShrink((l: List[Int]) => IO(l.size < 5))
+}
+
+class PropShrinkTest
+extends SimpleTest[IO]
+{
+  test("shrink").forall((i: Int) => IO.pure(i > 0))
 }
 
 class SharedResTest

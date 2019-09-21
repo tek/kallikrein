@@ -84,19 +84,31 @@ case class TestBuilder[F[_], RR <: HList]
     effect: TestEffect[F],
   )
   : Unit =
-    tests.plain(PlainTest(result, reporter)(desc)(TestFunction(strip(resources)(thunk)))(effect.sync))
+    tests.plain(PlainTest(BasicTestResources(result, reporter))(desc)(TestFunction(strip(resources)(thunk)))(effect.sync))
 
   def forallNoShrink[Thunk, Thunk0, Expected, Actual]
   (thunk: Thunk)
   (
     implicit
     strip: StripResources.Aux[RR, Thunk, Thunk0],
-    propGen: PropGen[F, Thunk0],
+    propGen: PropGen[F, Thunk0, PropRunner.Full],
     result: TestResult[F, PropertyTestResult, Boolean, Boolean],
     effect: TestEffect[F],
   )
   : Unit =
-    tests.plain(PlainTest.forallNoShrink(propGen, result, reporter, effect)(desc)(strip(resources)(thunk))(effect.sync))
+    tests.plain(PlainTest.forall(PropTestResources(BasicTestResources(result, reporter), propGen, effect))(desc)(strip(resources)(thunk))(effect.sync))
+
+  def forall[Thunk, Thunk0, Expected, Actual]
+  (thunk: Thunk)
+  (
+    implicit
+    strip: StripResources.Aux[RR, Thunk, Thunk0],
+    propGen: PropGen[F, Thunk0, PropRunner.Shrink],
+    result: TestResult[F, PropertyTestResult, Boolean, Boolean],
+    effect: TestEffect[F],
+  )
+  : Unit =
+    tests.plain(PlainTest.forall(PropTestResources(BasicTestResources(result, reporter), propGen, effect))(desc)(strip(resources)(thunk))(effect.sync))
 
   def resource[R](r: Resource[F, R]): TestBuilder[F, Resource[F, R] :: RR] =
     TestBuilder(tests, desc)(reporter)(TestResources(r :: resources.resources))
@@ -119,7 +131,7 @@ case class SharedResource[F[_], R]
     sync: Sync[F],
   )
   : Unit =
-    tests += ResourceTest(result, reporter)(desc)(res => TestFunction(thunk(res)))
+    tests += ResourceTest(BasicTestResources(result, reporter))(desc)(res => TestFunction(thunk(res)))
 }
 
 trait TestInterface
@@ -150,70 +162,78 @@ extends TestInterface
   //   () => output match { case _ => t }
 }
 
+case class BasicTestResources[F[_], O, E, A](result: TestResult[F, O, E, A], reporter: TestReporter)
+
+case class PropTestResources[F[_], E, A, T, Tr](
+  basic: BasicTestResources[F, PropertyTestResult, E, A],
+  propGen: PropGen[F, T, Tr],
+  effect: TestEffect[F],
+)
+
 object Test
 {
   def execute[F[_]: Sync, T, P, O, E, A, Res]
-  (result: TestResult[F, O, E, A], reporter: TestReporter)
+  (resources: BasicTestResources[F, O, E, A])
   (desc: String)
   (thunk: Res => TestFunction[F, O])
   (log: TestLog)
   (res: Res)
   : F[FinalResult] =
     for {
-      testResult <- result.handle(TestFunction.execute(thunk(res)))
-      _ <- TestReporter.report[F, E, A](reporter, log)(desc)(testResult)
+      testResult <- resources.result.handle(TestFunction.execute(thunk(res)))
+      _ <- TestReporter.report[F, E, A](resources.reporter, log)(desc)(testResult)
     } yield FinalResult()
 
-  def noShrinkThunk[F[_], Res, T](propGen: PropGen[F, T], effect: TestEffect[F])
+  def forallThunk[F[_], Res, T, Tr](propGen: PropGen[F, T, Tr], effect: TestEffect[F])
   : (Res => T) => Res => TestFunction[F, PropertyTestResult] =
-    thunk => res => PropGen.noShrink(effect.concurrentPool)(thunk(res))(effect.sync, propGen)
+    thunk => res => PropGen(effect.concurrentPool)(thunk(res))(effect.sync, propGen)
 
-  def forallNoShrink[F[_]: Sync, T, P, O, E, A, Res]
-  (propGen: PropGen[F, T], result: TestResult[F, PropertyTestResult, E, A], reporter: TestReporter, effect: TestEffect[F])
+  def forall[F[_]: Sync, T, Tr, P, O, E, A, Res]
+  (resources: PropTestResources[F, E, A, T, Tr])
   (desc: String)
   (thunk: Res => T)
   (log: TestLog)
   (res: Res)
   : F[FinalResult] =
-    execute(result, reporter)(desc)(noShrinkThunk(propGen, effect)(thunk))(log)(res)
+    execute(resources.basic)(desc)(forallThunk(resources.propGen, resources.effect)(thunk))(log)(res)
 }
 
 object PlainTest
 {
   def apply[F[_]: Sync, T, P, O, E, A]
-  (result: TestResult[F, O, E, A], reporter: TestReporter)
+  (resources: BasicTestResources[F, O, E, A])
   (desc: String)
   (thunk: TestFunction[F, O])
   : KlkTest[F, Unit] =
-    KlkTest(desc, Test.execute(result, reporter)(desc)(_ => thunk))
+    KlkTest(desc, Test.execute(resources)(desc)(_ => thunk))
 
-  def forallNoShrink[F[_]: Sync, T, P, E, A]
-  (propGen: PropGen[F, T], result: TestResult[F, PropertyTestResult, E, A], reporter: TestReporter, effect: TestEffect[F])
+  def forall[F[_]: Sync, T, Tr, P, E, A]
+  (resources: PropTestResources[F, E, A, T, Tr])
   (desc: String)
   (thunk: T)
   : KlkTest[F, Unit] =
     KlkTest(
       desc,
-      Test.forallNoShrink(propGen, result, reporter, effect)(desc)(_ => thunk),
+      Test.forall(resources)(desc)(_ => thunk),
     )
 }
 
 object ResourceTest
 {
   def apply[F[_]: Sync, T, P, O, E, A, Res]
-  (result: TestResult[F, O, E, A], reporter: TestReporter)
+  (resources: BasicTestResources[F, O, E, A])
   (desc: String)
   (thunk: Res => TestFunction[F, O])
   : KlkTest[F, Res] =
-    KlkTest(desc, Test.execute(result, reporter)(desc)(thunk))
+    KlkTest(desc, Test.execute(resources)(desc)(thunk))
 
-  def forall[F[_]: Sync, T, P, O, E, A, Res]
-  (propGen: PropGen[F, T], result: TestResult[F, PropertyTestResult, E, A], reporter: TestReporter, effect: TestEffect[F])
+  def forall[F[_]: Sync, T, Tr, P, O, E, A, Res]
+  (resources: PropTestResources[F, E, A, T, Tr])
   (desc: String)
   (thunk: Res => T)
   : KlkTest[F, Res] =
     KlkTest(
       desc,
-      Test.forallNoShrink(propGen, result, reporter, effect)(desc)(thunk),
+      Test.forall(resources)(desc)(thunk),
     )
 }

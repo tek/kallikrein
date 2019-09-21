@@ -1,7 +1,9 @@
 package klk
 
+import scala.concurrent.ExecutionContext
+
 import cats.Functor
-import cats.effect.{Concurrent, IO, Resource, Sync}
+import cats.effect.{Concurrent, IO, Sync}
 import cats.implicits._
 import sbt.testing.Logger
 
@@ -75,7 +77,7 @@ object TestReporter
 trait TestEffect[F[_]]
 {
   def run[A](thunk: F[A]): A
-  def concurrentPool: Resource[F, Concurrent[F]]
+  def concurrentPool(ec: ExecutionContext): Concurrent[F]
   def sync: Sync[F]
 }
 
@@ -89,8 +91,8 @@ object TestEffect
           // .recover { case NonFatal(a) => KlkResult(false, KlkResultDetails.Fatal[E, A](a)) }
           .unsafeRunSync
 
-      def concurrentPool: Resource[IO, Concurrent[IO]] =
-        Concurrency.fixedPoolCs.map(IO.ioConcurrentEffect(_))
+        def concurrentPool(ec: ExecutionContext): Concurrent[IO] =
+          IO.ioConcurrentEffect(IO.contextShift(ec))
 
       def sync: Sync[IO] =
         Sync[IO]
