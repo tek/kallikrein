@@ -123,7 +123,7 @@ object ForAllShrink
   : Kleisli[F, Parameters, Prop.Result] =
   {
     val res = ForAll.addArg(labels)(value, initialValue, 0)(previousResult)
-    Stream.unfold(Shrink.shrink[A](value).filter(genResult.sieve))(as => as.headOption.map(a => (a, as.tail)))
+    Stream.unfold(Shrink.shrink[A](value).filter(genResult.sieve))(as => as.headOption.map(a => (a, as.drop(1))))
       .through(a => firstFailureOrSuccess[F, A](test, prms)(a).stream)
       .compile
       .last
