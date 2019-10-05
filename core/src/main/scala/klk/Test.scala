@@ -30,35 +30,19 @@ trait StripResources[R <: HList, ThunkF]
   def apply(resources: TestResources[R])(thunk: ThunkF): Thunk
 }
 
-trait StripResources2
+object StripResources
 {
+  type Aux[R <: HList, ThunkF, Thunk0] =
+    StripResources[R, ThunkF] {
+      type Thunk = Thunk0
+    }
+
   implicit def StripResources_HNil[F[_], Output]
   : StripResources.Aux[HNil, F[Output], F[Output]] =
     new StripResources[HNil, F[Output]] {
       type Thunk = F[Output]
       def apply(resources: TestResources[HNil])(thunk: Thunk): Thunk =
         thunk
-    }
-}
-
-trait StripResources1
-extends StripResources2
-{
-  implicit def StripResources_Function[F[_], A, Output]
-  : StripResources.Aux[HNil, A => F[Output], A => F[Output]] =
-    new StripResources[HNil, A => F[Output]] {
-      type Thunk = A => F[Output]
-      def apply(resources: TestResources[HNil])(thunk: Thunk): Thunk =
-        thunk
-    }
-}
-
-object StripResources
-extends StripResources1
-{
-  type Aux[R <: HList, ThunkF, Thunk0] =
-    StripResources[R, ThunkF] {
-      type Thunk = Thunk0
     }
 
   implicit def StripResources_HList[F[_]: Bracket[?[_], Throwable], H, T <: HList, ThunkF, Output]
@@ -253,8 +237,5 @@ object ResourceTest
   (desc: String)
   (thunk: Res => T)
   : KlkTest[F, Res] =
-    KlkTest(
-      desc,
-      Test.forall(resources)(desc)(thunk),
-    )
+    KlkTest(desc, Test.forall(resources)(desc)(thunk))
 }
