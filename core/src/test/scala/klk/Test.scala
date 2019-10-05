@@ -9,7 +9,7 @@ import org.scalacheck.ForAllNoShrink
 import org.scalacheck.Gen.Parameters
 import org.scalacheck.Test.{Parameters => TestParameters}
 
-class RunTest
+class BasicTest
 extends SimpleTest[IO]
 {
   def runTest(num: Int): IO[KlkResult[Int, Int]] =
@@ -36,7 +36,7 @@ extends SimpleTest[IO]
       }
     }
     val params = ScalacheckParams.cons(TestParameters.default, Parameters.default.withInitialSeed(10L))
-    PropertyTest.run(TestEffect.io.concurrentPool)(params)(f)
+    PropertyTest.run(ConsConcurrent.io.pool)(params)(f)
   }
 }
 

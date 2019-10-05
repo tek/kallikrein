@@ -173,8 +173,8 @@ object PropertyTest
       result <- concurrent(terminate)(params)(test)
     } yield result
 
-  def discardingPool[F[_]: Sync]: F[ExecutorService] =
-    Concurrency.fixedPool.flatMap {
+  def discardingPool[F[_]: Sync](threads: Int): F[ExecutorService] =
+    Concurrency.fixedPoolWith(threads).flatMap {
       case es: ThreadPoolExecutor =>
         Sync[F].delay(es.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy)).as(es)
       case es =>
@@ -186,9 +186,10 @@ object PropertyTest
   (params: ScalacheckParams)
   (test: PropertyTest[F])
   : F[PropertyTestResult] =
-    Concurrency.ec[F](discardingPool[F]).map(concurrent).use { implicit c =>
-      stream(params)(test).compile.last.map(_.getOrElse(PropertyTestResult.noInput))
-    }
+    Concurrency.ec[F](discardingPool[F](params.test.workers))
+      .map(concurrent)
+      .map(stream(params)(test)(_))
+      .use(_.compile.last.map(_.getOrElse(PropertyTestResult.noInput)))
 
   type K[F[_], A] = Kleisli[F, Gen.Parameters, A]
 
@@ -278,7 +279,7 @@ object PropGen
   def apply[F[_]: Sync, Thunk, Trans]
   (concurrent: ExecutionContext => Concurrent[F])
   (thunk: Thunk)
-  (implicit propGen: PropGen[F, Thunk, Trans])
-  : TestFunction[F, PropertyTestResult] =
-    TestFunction(PropertyTest.run(concurrent)(ScalacheckParams.default)(propGen.thunk(thunk)))
+  (propGen: PropGen[F, Thunk, Trans])
+  : F[PropertyTestResult] =
+    PropertyTest.run(concurrent)(ScalacheckParams.default)(propGen.thunk(thunk))
 }

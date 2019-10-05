@@ -29,7 +29,7 @@ object TestReporter
 
   def sanitizeStacktrace(trace: List[StackTraceElement]): List[String] =
     trace
-      .takeWhile(a => !a.getClassName.startsWith("klk.TestEffect"))
+      .takeWhile(a => !a.getClassName.startsWith("klk.Compute"))
       .reverse
       .dropWhile(a => a.getClassName.startsWith("cats.effect"))
       .dropWhile(a => a.getClassName.startsWith("scala.runtime"))
@@ -74,28 +74,32 @@ object TestReporter
     }
 }
 
-trait TestEffect[F[_]]
+trait Compute[F[_]]
 {
   def run[A](thunk: F[A]): A
-  def concurrentPool(ec: ExecutionContext): Concurrent[F]
-  def sync: Sync[F]
 }
 
-// TODO change back to KlkResult
-object TestEffect
+object Compute
 {
-  implicit def io: TestEffect[IO] =
-    new TestEffect[IO] {
+  implicit def io: Compute[IO] =
+    new Compute[IO] {
       def run[A](thunk: IO[A]): A =
         thunk
-          // .recover { case NonFatal(a) => KlkResult(false, KlkResultDetails.Fatal[E, A](a)) }
           .unsafeRunSync
+    }
+}
 
-        def concurrentPool(ec: ExecutionContext): Concurrent[IO] =
-          IO.ioConcurrentEffect(IO.contextShift(ec))
+trait ConsConcurrent[F[_]]
+{
+  def pool(ec: ExecutionContext): Concurrent[F]
+}
 
-      def sync: Sync[IO] =
-        Sync[IO]
+object ConsConcurrent
+{
+  implicit def io: ConsConcurrent[IO] =
+    new ConsConcurrent[IO] {
+      def pool(ec: ExecutionContext): Concurrent[IO] =
+        IO.ioConcurrentEffect(IO.contextShift(ec))
     }
 }
 
@@ -124,14 +128,4 @@ object TestResult
         output.map(result => KlkResult(result.success, PropertyTestResult.resultDetails(result)))
       }
     }
-}
-
-case class TestFunction[F[_], Output](thunk: F[Output])
-
-object TestFunction
-{
-  def execute[F[_], Output, Expected, Actual]: TestFunction[F, Output] => F[Output] = {
-    case TestFunction(f) =>
-      f
-  }
 }
