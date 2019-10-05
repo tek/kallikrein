@@ -41,7 +41,31 @@ trait StripResources[R <: HList, ThunkF]
   def apply(resources: TestResources[R])(thunk: ThunkF): Thunk
 }
 
+trait StripResources2
+{
+  implicit def StripResources_HNil[F[_], Output]
+  : StripResources.Aux[HNil, F[Output], F[Output]] =
+    new StripResources[HNil, F[Output]] {
+      type Thunk = F[Output]
+      def apply(resources: TestResources[HNil])(thunk: Thunk): Thunk =
+        thunk
+    }
+}
+
+trait StripResources1
+extends StripResources2
+{
+  implicit def StripResources_Function[F[_], A, Output]
+  : StripResources.Aux[HNil, A => F[Output], A => F[Output]] =
+    new StripResources[HNil, A => F[Output]] {
+      type Thunk = A => F[Output]
+      def apply(resources: TestResources[HNil])(thunk: Thunk): Thunk =
+        thunk
+    }
+}
+
 object StripResources
+extends StripResources1
 {
   type Aux[R <: HList, ThunkF, Thunk0] =
     StripResources[R, ThunkF] {
@@ -53,18 +77,8 @@ object StripResources
   : Aux[Resource[F, H] :: T, H => ThunkF, F[Output]] =
     new StripResources[Resource[F, H] :: T, H => ThunkF] {
       type Thunk = F[Output]
-
       def apply(resources: TestResources[Resource[F, H] :: T])(thunk: H => ThunkF): F[Output] =
         resources.resources.head.use(h => next(TestResources(resources.resources.tail))(thunk(h)))
-    }
-
-  implicit def StripResources_HNil[F[_], Output]
-  : Aux[HNil, F[Output], F[Output]] =
-    new StripResources[HNil, F[Output]] {
-      type Thunk = F[Output]
-
-      def apply(resources: TestResources[HNil])(thunk: Thunk): Thunk =
-        thunk
     }
 }
 
@@ -84,7 +98,25 @@ case class TestBuilder[F[_], RR <: HList]
     effect: TestEffect[F],
   )
   : Unit =
-    tests.plain(PlainTest(BasicTestResources(result, reporter))(desc)(TestFunction(strip(resources)(thunk)))(effect.sync))
+  {
+    val btRes = BasicTestResources(result, reporter)
+    tests.plain(PlainTest(btRes)(desc)(TestFunction(strip(resources)(thunk)))(effect.sync))
+  }
+
+  def genForall[Thunk, Thunk0, Trans, Expected, Actual]
+  (thunk: Thunk)
+  (
+    implicit
+    strip: StripResources.Aux[RR, Thunk, Thunk0],
+    propGen: PropGen[F, Thunk0, Trans],
+    result: TestResult[F, PropertyTestResult, Boolean, Boolean],
+    effect: TestEffect[F],
+  )
+  : Unit =
+  {
+    val ptRes = PropTestResources(BasicTestResources(result, reporter), propGen, effect)
+    tests.plain(PlainTest.forall(ptRes)(desc)(strip(resources)(thunk))(effect.sync))
+  }
 
   def forallNoShrink[Thunk, Thunk0, Expected, Actual]
   (thunk: Thunk)
@@ -96,7 +128,7 @@ case class TestBuilder[F[_], RR <: HList]
     effect: TestEffect[F],
   )
   : Unit =
-    tests.plain(PlainTest.forall(PropTestResources(BasicTestResources(result, reporter), propGen, effect))(desc)(strip(resources)(thunk))(effect.sync))
+    genForall(thunk)
 
   def forall[Thunk, Thunk0, Expected, Actual]
   (thunk: Thunk)
@@ -108,7 +140,7 @@ case class TestBuilder[F[_], RR <: HList]
     effect: TestEffect[F],
   )
   : Unit =
-    tests.plain(PlainTest.forall(PropTestResources(BasicTestResources(result, reporter), propGen, effect))(desc)(strip(resources)(thunk))(effect.sync))
+    genForall(thunk)
 
   def resource[R](r: Resource[F, R]): TestBuilder[F, Resource[F, R] :: RR] =
     TestBuilder(tests, desc)(reporter)(TestResources(r :: resources.resources))

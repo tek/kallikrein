@@ -10,6 +10,7 @@ import cats.effect.{Concurrent, Sync}
 import cats.implicits._
 import fs2.{Pull, Stream}
 import fs2.concurrent.SignallingRef
+import org.{scalacheck => sc}
 import org.scalacheck.{Arbitrary, ForAllNoShrink, ForAllShrink, Gen, Prop, Test => PropTest}
 import org.scalacheck.Test.{Parameters => TestParameters}
 import org.scalacheck.util.{FreqMap, Pretty}
@@ -234,7 +235,7 @@ object PropRunner
   type Full
   type Shrink
 
-  implicit def PropRunner_Full[F[_]: Sync, A]
+  implicit def PropRunner_Full[F[_]: Sync, A: sc.Shrink]
   (implicit arbitrary: Arbitrary[A], pp1: A => Pretty)
   : PropRunner[F, Full, A] =
     new PropRunner[F, Full, A] {
@@ -242,7 +243,7 @@ object PropRunner
         ForAllNoShrink(f)
     }
 
-  implicit def PropRunner_Shrink[F[_]: Sync, A]
+  implicit def PropRunner_Shrink[F[_]: Sync, A: sc.Shrink]
   (implicit arbitrary: Arbitrary[A], pp1: A => Pretty)
   : PropRunner[F, Shrink, A] =
     new PropRunner[F, Shrink, A] {
