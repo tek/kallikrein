@@ -19,7 +19,7 @@ case class TestLog(loggers: Array[Logger])
 trait TestReporter
 {
   def result[F[_]: Sync](log: TestLog): String => Boolean => F[Unit]
-  def failure[F[_]: Sync, E, A](log: TestLog): KlkResultDetails[E, A] => F[Unit]
+  def failure[F[_]: Sync](log: TestLog): KlkResultDetails => F[Unit]
 }
 
 object TestReporter
@@ -36,7 +36,7 @@ object TestReporter
       .reverse
       .map(_.toString)
 
-  def formatFailure[E, A]: KlkResultDetails[E, A] => List[String] = {
+  def formatFailure: KlkResultDetails => List[String] = {
     case KlkResultDetails.NoDetails() =>
       List("test failed")
     case KlkResultDetails.Simple(info) =>
@@ -55,13 +55,14 @@ object TestReporter
   def formatResult(desc: String)(success: Boolean): List[String] =
     List(s"${successSymbol(success)} $desc")
 
-  def report[F[_]: Sync, E, A]
+  def report[F[_]: Sync]
   (reporter: TestReporter, log: TestLog)
   (desc: String)
-  (result: KlkResult[E, A])
-  : F[Unit] =
-    reporter.result[F](log).apply(desc)(result.success) *>
-    reporter.failure[F, E, A](log).apply(result.details).unlessA(result.success)
+  (result: KlkResult)
+  : F[Unit] = {
+    reporter.result[F](log).apply(desc)(KlkResult.success(result)) *>
+    KlkResult.failures(result).traverse_(reporter.failure[F](log))
+  }
 
 
   def stdout: TestReporter =
@@ -69,7 +70,7 @@ object TestReporter
       def result[F[_]: Sync](log: TestLog): String => Boolean => F[Unit] =
         desc => (log.info[F] _).compose(formatResult(desc))
 
-      def failure[F[_]: Sync, E, A](log: TestLog): KlkResultDetails[E, A] => F[Unit] =
+      def failure[F[_]: Sync](log: TestLog): KlkResultDetails => F[Unit] =
         (log.info[F] _).compose(indent(2)).compose(formatFailure)
     }
 }
@@ -103,28 +104,28 @@ object ConsConcurrent
     }
 }
 
-trait TestResult[F[_], Output, Expected, Actual]
+trait TestResult[F[_], Output]
 {
-  def handle(output: F[Output]): F[KlkResult[Expected, Actual]]
+  def handle(output: F[Output]): F[KlkResult]
 }
 
 object TestResult
 {
-  implicit def TestResult_KlkResult[F[_], E, A]: TestResult[F, KlkResult[E, A], E, A] =
-    new TestResult[F, KlkResult[E, A], E, A] {
-      def handle(output: F[KlkResult[E, A]]): F[KlkResult[E, A]] =
+  implicit def TestResult_KlkResult[F[_]]: TestResult[F, KlkResult] =
+    new TestResult[F, KlkResult] {
+      def handle(output: F[KlkResult]): F[KlkResult] =
         output
     }
 
-  implicit def TestResult_Boolean[F[_]: Functor]: TestResult[F, Boolean, Boolean, Boolean] =
-    new TestResult[F, Boolean, Boolean, Boolean] {
-      def handle(output: F[Boolean]): F[KlkResult[Boolean, Boolean]] =
+  implicit def TestResult_Boolean[F[_]: Functor]: TestResult[F, Boolean] =
+    new TestResult[F, Boolean] {
+      def handle(output: F[Boolean]): F[KlkResult] =
         output.map(a => KlkResult(a, KlkResultDetails.NoDetails()))
     }
 
-  implicit def TestResult_PropertyTestResult[F[_]: Functor]: TestResult[F, PropertyTestResult, Boolean, Boolean] =
-    new TestResult[F, PropertyTestResult, Boolean, Boolean] {
-      def handle(output: F[PropertyTestResult]): F[KlkResult[Boolean, Boolean]] = {
+  implicit def TestResult_PropertyTestResult[F[_]: Functor]: TestResult[F, PropertyTestResult] =
+    new TestResult[F, PropertyTestResult] {
+      def handle(output: F[PropertyTestResult]): F[KlkResult] = {
         output.map(result => KlkResult(result.success, PropertyTestResult.resultDetails(result)))
       }
     }

@@ -12,7 +12,7 @@ import org.scalacheck.Test.{Parameters => TestParameters}
 class BasicTest
 extends SimpleTest[IO]
 {
-  def runTest(num: Int): IO[KlkResult[Int, Int]] =
+  def runTest(num: Int): IO[KlkResult] =
     IO.sleep(200.milli).as(assertEqual(0)(num % 3))
 
   def one(num: Int): Unit =

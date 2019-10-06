@@ -5,7 +5,7 @@ import java.lang.reflect.Constructor
 import cats.implicits._
 import sbt.testing.{EventHandler, Fingerprint, Logger, SubclassFingerprint, Task, TaskDef}
 
-case class TestThunk(thunk: TestLog => FinalResult)
+case class TestThunk(thunk: TestLog => KlkResult)
 
 object ExecuteTask
 {

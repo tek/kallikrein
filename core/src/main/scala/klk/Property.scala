@@ -98,7 +98,7 @@ object PropertyTestResult
   def noInput: PropertyTestResult =
     PropertyTestResult(false, PropertyTestState.Stats.zero, PropTest.Result(PropTest.Exhausted, 0, 0, FreqMap.empty))
 
-  def resultDetails: PropertyTestResult => KlkResultDetails[Boolean, Boolean] = {
+  def resultDetails: PropertyTestResult => KlkResultDetails = {
     case PropertyTestResult(_, PropertyTestState.Stats(_, iterations, discarded), result) =>
       val message: List[String] = result.status match {
         case PropTest.Exhausted => List(s"exhausted after $iterations iterations, discarding $discarded")
