@@ -11,6 +11,7 @@ extends AutoPlugin
       .in(file(n))
       .settings(
         name := s"kallikrein-$n",
+        organization := "io.tryp",
         addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.0"),
         addCompilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3"),
         fork := true,
