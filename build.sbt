@@ -8,6 +8,7 @@ val core = pro(project, "core")
       "org.scala-sbt" % "test-interface" % "1.0",
       "org.scalacheck" %% "scalacheck" % "1.14.0",
       "com.chuusai" %% "shapeless" % "2.3.3",
+      "org.specs2" %% "specs2-core" % "4.7.1"
     ),
     testFrameworks += new TestFramework("klk.KlkFramework"),
   )

@@ -3,6 +3,7 @@ package klk
 import scala.concurrent.ExecutionContext
 
 import cats.Functor
+import cats.arrow.FunctionK
 import cats.effect.{Concurrent, IO, Sync}
 import cats.implicits._
 import sbt.testing.Logger
@@ -132,14 +133,13 @@ object TestResult
 }
 
 trait Compile[F[_], G[_]]
-{
-  def apply[A](fa: F[A]): G[A]
-}
+extends FunctionK[F, G]
 
 object Compile
 {
   implicit def Compile_IO_IO: Compile[IO, IO] =
     new Compile[IO, IO] {
-      def apply[A](fa: IO[A]): IO[A] = fa
+      def apply[A](fa: IO[A]): IO[A] =
+        fa
     }
 }
