@@ -57,7 +57,7 @@ object StripResources
 
 case class TestResources[R <: HList](resources: R)
 
-case class TestBuilder[F[_], RR <: HList]
+case class TestBuilder[F[_], G[_], RR <: HList]
 (tests: KlkTests, desc: String)
 (reporter: TestReporter)
 (resources: TestResources[RR])
@@ -67,13 +67,15 @@ case class TestBuilder[F[_], RR <: HList]
   (
     implicit
     strip: StripResources.Aux[RR, Thunk, F[Output]],
-    result: TestResult[F, Output],
-    effect: Compute[F],
-    sync: Sync[F],
+    compile: Compile[F, G],
+    result: TestResult[G, Output],
+    effect: Compute[G],
+    syncF: Sync[F],
+    syncG: Sync[G],
   )
   : Unit =
   {
-    val btRes = BasicTestResources(result, reporter)
+    val btRes = BasicTestResources(compile, result, reporter)
     tests.plain(PlainTest(btRes)(desc)(strip(resources)(thunk)))
   }
 
@@ -83,14 +85,16 @@ case class TestBuilder[F[_], RR <: HList]
     implicit
     strip: StripResources.Aux[RR, Thunk, Thunk0],
     propGen: PropGen[F, Thunk0, Trans],
-    result: TestResult[F, PropertyTestResult],
-    effect: Compute[F],
+    compile: Compile[F, G],
+    result: TestResult[G, PropertyTestResult],
+    effect: Compute[G],
     pool: ConsConcurrent[F],
-    sync: Sync[F],
+    syncF: Sync[F],
+    syncG: Sync[G],
   )
   : Unit =
   {
-    val ptRes = PropTestResources(BasicTestResources(result, reporter), propGen, pool)
+    val ptRes = PropTestResources(BasicTestResources(compile, result, reporter), propGen, pool)
     tests.plain(PlainTest.forall(ptRes)(desc)(strip(resources)(thunk)))
   }
 
@@ -100,10 +104,12 @@ case class TestBuilder[F[_], RR <: HList]
     implicit
     strip: StripResources.Aux[RR, Thunk, Thunk0],
     propGen: PropGen[F, Thunk0, PropRunner.Full],
-    result: TestResult[F, PropertyTestResult],
-    effect: Compute[F],
+    compile: Compile[F, G],
+    result: TestResult[G, PropertyTestResult],
+    effect: Compute[G],
     pool: ConsConcurrent[F],
-    sync: Sync[F],
+    syncF: Sync[F],
+    syncG: Sync[G],
   )
   : Unit =
     genForall(thunk)
@@ -114,36 +120,40 @@ case class TestBuilder[F[_], RR <: HList]
     implicit
     strip: StripResources.Aux[RR, Thunk, Thunk0],
     propGen: PropGen[F, Thunk0, PropRunner.Shrink],
-    result: TestResult[F, PropertyTestResult],
-    effect: Compute[F],
+    compile: Compile[F, G],
+    result: TestResult[G, PropertyTestResult],
+    effect: Compute[G],
     pool: ConsConcurrent[F],
-    sync: Sync[F],
+    syncF: Sync[F],
+    syncG: Sync[G],
   )
   : Unit =
     genForall(thunk)
 
-  def resource[R](r: Resource[F, R]): TestBuilder[F, Resource[F, R] :: RR] =
+  def resource[R](r: Resource[F, R]): TestBuilder[F, G, Resource[F, R] :: RR] =
     TestBuilder(tests, desc)(reporter)(TestResources(r :: resources.resources))
 }
 
-case class SharedResource[F[_], R]
-(resource: Resource[F, R])
+case class SharedResource[G[_], R]
+(resource: Resource[G, R])
 (reporter: TestReporter)
-(implicit val effect: Compute[F])
+(implicit val effect: Compute[G])
 {
-  val tests: mutable.Buffer[KlkTest[F, R]] =
+  val tests: mutable.Buffer[KlkTest[G, R]] =
     mutable.Buffer.empty
 
-  def test[Thunk, Output]
+  def test[F[_], Thunk, Output]
   (desc: String)
   (thunk: R => F[Output])
   (
     implicit
-    result: TestResult[F, Output],
-    sync: Sync[F],
+    compile: Compile[F, G],
+    result: TestResult[G, Output],
+    syncF: Sync[F],
+    syncG: Sync[G],
   )
   : Unit =
-    tests += ResourceTest(BasicTestResources(result, reporter))(desc)(thunk)
+    tests += ResourceTest(BasicTestResources(compile, result, reporter))(desc)(thunk)
 }
 
 trait TestInterface
@@ -157,9 +167,9 @@ trait TestInterface
 abstract class Test[F[_]: Compute]
 extends TestInterface
 {
-  def test
+  def test[G[_]]
   (desc: String)
-  : TestBuilder[F, HNil] =
+  : TestBuilder[F, G, HNil] =
     TestBuilder(tests, desc)(reporter)(TestResources(HNil))
 
   def sharedResource[R](resource: Resource[F, R])(implicit bracket: Bracket[F, Throwable]): SharedResource[F, R] = {
@@ -169,73 +179,77 @@ extends TestInterface
   }
 }
 
-case class BasicTestResources[F[_], O](result: TestResult[F, O], reporter: TestReporter)
+case class BasicTestResources[F[_], G[_], O](
+  compile: Compile[F, G],
+  result: TestResult[G, O],
+  reporter: TestReporter,
+)
 
-case class PropTestResources[F[_], T, Tr](
-  basic: BasicTestResources[F, PropertyTestResult],
+case class PropTestResources[F[_], G[_], T, Tr](
+  basic: BasicTestResources[F, G, PropertyTestResult],
   propGen: PropGen[F, T, Tr],
   pool: ConsConcurrent[F],
 )
 
 object Test
 {
-  def execute[F[_]: Sync, T, P, O, Res]
-  (resources: BasicTestResources[F, O])
+  def execute[F[_]: Sync, G[_]: Sync, T, P, O, Res]
+  (resources: BasicTestResources[F, G, O])
   (desc: String)
   (thunk: Res => F[O])
   (log: TestLog)
   (res: Res)
-  : F[KlkResult] =
+  : G[KlkResult] =
     for {
-      testResult <- resources.result.handle(thunk(res))
+      testResult <- resources.result.handle(resources.compile(thunk(res)))
         .recover { case NonFatal(a) => KlkResult(false, KlkResultDetails.Fatal(a)) }
-      _ <- TestReporter.report[F](resources.reporter, log)(desc)(testResult)
+      _ <- TestReporter.report[G](resources.reporter, log)(desc)(testResult)
     } yield testResult
 
   def forallThunk[F[_]: Sync, Res, T, Tr](propGen: PropGen[F, T, Tr], concurrent: ConsConcurrent[F])
   : (Res => T) => Res => F[PropertyTestResult] =
     thunk => res => PropGen(concurrent.pool)(thunk(res))(propGen)
 
-  def forall[F[_]: Sync, T, Tr, P, O, Res]
-  (resources: PropTestResources[F, T, Tr])
+  def forall[F[_]: Sync, G[_]: Sync, T, Tr, P, O, Res]
+  (resources: PropTestResources[F, G, T, Tr])
   (desc: String)
   (thunk: Res => T)
   (log: TestLog)
   (res: Res)
-  : F[KlkResult] =
+  : G[KlkResult] =
     execute(resources.basic)(desc)(forallThunk(resources.propGen, resources.pool).apply(thunk))(log)(res)
 }
 
 object PlainTest
 {
-  def apply[F[_]: Sync, T, P, O]
-  (resources: BasicTestResources[F, O])
+  def apply[F[_]: Sync, G[_]: Sync, T, P, O]
+  (resources: BasicTestResources[F, G, O])
   (desc: String)
   (thunk: F[O])
-  : KlkTest[F, Unit] =
+  : KlkTest[G, Unit] =
     KlkTest(desc, Test.execute(resources)(desc)(_ => thunk))
 
-  def forall[F[_]: Sync, T, Tr, P]
-  (resources: PropTestResources[F, T, Tr])
+  def forall[F[_]: Sync, G[_]: Sync, T, Tr, P]
+  (resources: PropTestResources[F, G, T, Tr])
   (desc: String)
   (thunk: T)
-  : KlkTest[F, Unit] =
+  : KlkTest[G, Unit] =
     KlkTest(desc, Test.forall(resources)(desc)(_ => thunk))
 }
 
 object ResourceTest
 {
-  def apply[F[_]: Sync, T, P, O, Res]
-  (resources: BasicTestResources[F, O])
+  def apply[F[_]: Sync, G[_]: Sync, T, P, O, Res]
+  (resources: BasicTestResources[F, G, O])
   (desc: String)
   (thunk: Res => F[O])
-  : KlkTest[F, Res] =
+  : KlkTest[G, Res] =
     KlkTest(desc, Test.execute(resources)(desc)(thunk))
 
-  def forall[F[_]: Sync, T, Tr, P, O, Res]
-  (resources: PropTestResources[F, T, Tr])
+  def forall[F[_]: Sync, G[_]: Sync, T, Tr, P, O, Res]
+  (resources: PropTestResources[F, G, T, Tr])
   (desc: String)
   (thunk: Res => T)
-  : KlkTest[F, Res] =
+  : KlkTest[G, Res] =
     KlkTest(desc, Test.forall(resources)(desc)(thunk))
 }

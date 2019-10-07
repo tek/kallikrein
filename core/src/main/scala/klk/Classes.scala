@@ -130,3 +130,16 @@ object TestResult
       }
     }
 }
+
+trait Compile[F[_], G[_]]
+{
+  def apply[A](fa: F[A]): G[A]
+}
+
+object Compile
+{
+  implicit def Compile_IO_IO: Compile[IO, IO] =
+    new Compile[IO, IO] {
+      def apply[A](fa: IO[A]): IO[A] = fa
+    }
+}
