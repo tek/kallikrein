@@ -17,3 +17,19 @@ val root = pro(project, ".")
   .dependsOn(core)
   .aggregate(core)
   .settings(name := "kallikrein")
+
+import ReleaseTransformations._
+
+releaseCrossBuild := true
+releaseProcess := Seq[ReleaseStep](
+  checkSnapshotDependencies,
+  inquireVersions,
+  runClean,
+  setReleaseVersion,
+  releaseStepCommandAndRemaining("+publish"),
+  releaseStepCommand("sonatypeReleaseAll"),
+  commitReleaseVersion,
+  tagRelease,
+  setNextVersion,
+  commitNextVersion,
+)
