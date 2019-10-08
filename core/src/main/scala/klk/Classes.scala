@@ -28,12 +28,18 @@ object TestReporter
   def indent(spaces: Int)(lines: List[String]): List[String] =
     lines.map(a => s"${" " * spaces}$a")
 
+  def packageFrameFilter: List[String] =
+    List(
+      "cats.effect",
+      "scala.runtime",
+      "scala.concurrent",
+    )
+
   def sanitizeStacktrace(trace: List[StackTraceElement]): List[String] =
     trace
       .takeWhile(a => !a.getClassName.startsWith("klk.Compute"))
       .reverse
-      .dropWhile(a => a.getClassName.startsWith("cats.effect"))
-      .dropWhile(a => a.getClassName.startsWith("scala.runtime"))
+      .dropWhile(a => packageFrameFilter.exists(a.getClassName.startsWith))
       .reverse
       .map(_.toString)
 
@@ -124,10 +130,10 @@ object TestResult
         output.map(a => KlkResult(a, KlkResultDetails.NoDetails()))
     }
 
-  implicit def TestResult_PropertyTestResult[F[_]: Functor]: TestResult[F, PropertyTestResult] =
-    new TestResult[F, PropertyTestResult] {
-      def handle(output: F[PropertyTestResult]): F[KlkResult] = {
-        output.map(result => KlkResult(result.success, PropertyTestResult.resultDetails(result)))
+  implicit def TestResult_PropertyTestOutput[F[_]: Functor, Trans]: TestResult[F, PropertyTestOutput[Trans]] =
+    new TestResult[F, PropertyTestOutput[Trans]] {
+      def handle(output: F[PropertyTestOutput[Trans]]): F[KlkResult] = {
+        output.map(result => KlkResult(result.result.success, PropertyTestResult.resultDetails(result.result)))
       }
     }
 }

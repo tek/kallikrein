@@ -12,7 +12,7 @@
 
 ```scala
 class SomeTest
-extends klk.SimpleTest[IO]
+extends klk.IOTest
 {
   test("description")(IO.pure(1 == 1))
 }
@@ -31,7 +31,7 @@ Tests can depend on shared and individual resources that will be supplied by the
 
 ```scala
 class SomeTest
-extends klk.SimpleTest[IO]
+extends klk.IOTest
 {
   val res1: Resource[IO, Int] = Resource.pure(1)
 
@@ -58,7 +58,7 @@ Scalacheck can be used in a test by calling the `forall` method on a test builde
 
 ```scala
 class SomeTest
-extends klk.SimpleTest[IO]
+extends klk.IOTest
 {
   test("are all lists of integers shorter than 5 elements?").forall((l1: List[Int]) => IO(l1.size < 5))
 }

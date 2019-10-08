@@ -10,61 +10,61 @@ import org.scalacheck.Gen.Parameters
 import org.scalacheck.Test.{Parameters => TestParameters}
 
 class BasicTest
-extends SimpleTest[IO]
+extends IOTest
 {
   def runTest(num: Int): IO[KlkResult] =
     IO.sleep(200.milli).as(assertEqual(0)(num % 3))
 
   def one(num: Int): Unit =
-    test[IO]("something")(runTest(num))
+    test("something")(runTest(num))
 
   List.range(0, 10).foreach(one)
 
   def frame1: Boolean =
     sys.error("boom")
 
-  test[IO]("exception")(IO(frame1))
+  test("exception")(IO(frame1))
 }
 
 class ForAllTest
-extends SimpleTest[IO]
+extends IOTest
 {
-  test[IO]("forall") {
+  test("forall") {
     val f: PropertyTest[IO] = ForAllNoShrink { (a: Int) =>
       ForAllNoShrink { (b: Int) =>
         PropertyTest(Kleisli.pure(PropResult.bool(a != b)))
       }
     }
     val params = ScalacheckParams.cons(TestParameters.default, Parameters.default.withInitialSeed(10L))
-    PropertyTest.run(ConsConcurrent.io.pool)(params)(f)
+    PropertyTest.run(ConsConcurrent.io)(params)(f).map(PropertyTestOutput(_))
   }
 }
 
 class PropTest
-extends SimpleTest[IO]
+extends IOTest
 {
-  test[IO]("are all lists of integers shorter than 5 elements?").forallNoShrink((l: List[Int]) => IO(l.size < 5))
+  test("are all lists of integers shorter than 5 elements?").forallNoShrink((l: List[Int]) => IO(l.size < 5))
 }
 
 class PropShrinkTest
-extends SimpleTest[IO]
+extends IOTest
 {
-  test[IO]("shrink").forall((i: Int) => IO.pure(i > 0))
+  test("shrink").forall((i: Int) => IO.pure(i > 0))
 }
 
 class SharedResTest
-extends SimpleTest[IO]
+extends IOTest
 {
   def eightySix: SharedResource[IO, Int] =
     sharedResource(Resource.pure(86))
 
-  eightySix.test[IO]("shared resource 1").apply(i => IO.pure(i == 86))
+  eightySix.test("shared resource 1").apply(i => IO.pure(i == 86))
 
-  eightySix.test[IO]("shared resource 2").apply(i => IO.pure(i == 68))
+  eightySix.test("shared resource 2").apply(i => IO.pure(i == 68))
 }
 
 class ResTest
-extends SimpleTest[IO]
+extends IOTest
 {
   val res1: Resource[IO, Int] = Resource.pure(1)
 

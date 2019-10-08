@@ -2,8 +2,6 @@ package klk
 
 import java.util.concurrent.{ExecutorService, ThreadPoolExecutor}
 
-import scala.concurrent.ExecutionContext
-
 import cats.{Applicative, Functor}
 import cats.data.Kleisli
 import cats.effect.{Concurrent, Sync}
@@ -122,6 +120,8 @@ object PropertyTestResult
   }
 }
 
+case class PropertyTestOutput[Trans](result: PropertyTestResult)
+
 case class PropertyTest[F[_]](test: Kleisli[F, Gen.Parameters, Prop.Result])
 
 object PropertyTest
@@ -182,12 +182,12 @@ object PropertyTest
     }
 
   def run[F[_]: Sync]
-  (concurrent: ExecutionContext => Concurrent[F])
+  (concurrent: ConsConcurrent[F])
   (params: ScalacheckParams)
   (test: PropertyTest[F])
   : F[PropertyTestResult] =
     Concurrency.ec[F](discardingPool[F](params.test.workers))
-      .map(concurrent)
+      .map(concurrent.pool)
       .map(stream(params)(test)(_))
       .use(_.compile.last.map(_.getOrElse(PropertyTestResult.noInput)))
 
@@ -226,60 +226,91 @@ object PropResult
     PropStatus.finished(result.status)
 }
 
-trait PropRunner[F[_], Trans, A]
+trait PropTrans[F[_], Trans, A]
 {
   def apply(input: A => PropertyTest[F]): PropertyTest[F]
 }
 
-object PropRunner
+object PropTrans
 {
   type Full
   type Shrink
 
-  implicit def PropRunner_Full[F[_]: Sync, A: sc.Shrink]
-  (implicit arbitrary: Arbitrary[A], pp1: A => Pretty)
-  : PropRunner[F, Full, A] =
-    new PropRunner[F, Full, A] {
+  implicit def PropTrans_Full[F[_]: Sync, A: Arbitrary]
+  (implicit pp1: A => Pretty)
+  : PropTrans[F, Full, A] =
+    new PropTrans[F, Full, A] {
       def apply(f: A => PropertyTest[F]): PropertyTest[F] =
         ForAllNoShrink(f)
     }
 
-  implicit def PropRunner_Shrink[F[_]: Sync, A: sc.Shrink]
-  (implicit arbitrary: Arbitrary[A], pp1: A => Pretty)
-  : PropRunner[F, Shrink, A] =
-    new PropRunner[F, Shrink, A] {
+  implicit def PropTrans_Shrink[F[_]: Sync, A: sc.Shrink: Arbitrary]
+  (implicit pp1: A => Pretty)
+  : PropTrans[F, Shrink, A] =
+    new PropTrans[F, Shrink, A] {
       def apply(f: A => PropertyTest[F]): PropertyTest[F] =
         ForAllShrink(f)
     }
 }
 
-trait PropGen[F[_], Thunk, Trans]
+trait PropThunk[Thunk, Trans]
 {
-  def thunk(f: Thunk): PropertyTest[F]
+  type F[A]
+
+  def apply(thunk: Thunk): PropertyTest[F]
 }
 
-object PropGen
+object PropThunk
 {
-  implicit def PropGen_Output[F[_]: Functor, P, Trans]
+  type Aux[Thunk, Trans, F0[_]] = PropThunk[Thunk, Trans] { type F[A] = F0[A] }
+
+  implicit def PropThunk_Output[F0[_]: Functor, P, Trans]
   (implicit pv: P => Prop)
-  : PropGen[F, F[P], Trans] =
-    new PropGen[F, F[P], Trans] {
-      def thunk(f: F[P]): PropertyTest[F] =
+  : PropThunk.Aux[F0[P], Trans, F0] =
+    new PropThunk[F0[P], Trans] {
+      type F[A] = F0[A]
+      def apply(f: F[P]): PropertyTest[F] =
         PropertyTest(Kleisli(params => f.map(p => pv(p)(params))))
     }
 
-  implicit def PropGen_f[F[_]: Sync, Thunk, P, Trans]
-  (implicit next: PropGen[F, Thunk, Trans], run: PropRunner[F, Trans, P])
-  : PropGen[F, P => Thunk, Trans] =
-    new PropGen[F, P => Thunk, Trans] {
-      def thunk(f: P => Thunk): PropertyTest[F] =
-        run((p: P) => next.thunk(f(p)))
+  implicit def PropThunk_f[F0[_], Thunk, P, Trans]
+  (implicit next: PropThunk.Aux[Thunk, Trans, F0], trans: PropTrans[F0, Trans, P])
+  : PropThunk.Aux[P => Thunk, Trans, F0] =
+    new PropThunk[P => Thunk, Trans] {
+      type F[A] = F0[A]
+      def apply(f: P => Thunk): PropertyTest[F] =
+        trans((p: P) => next(f(p)))
+    }
+}
+
+trait PropRun[Thunk, Trans]
+{
+  type F[A]
+  def apply(thunk: Thunk): PropertyTest[F]
+  def sync: Sync[F]
+  def pool: ConsConcurrent[F]
+}
+
+object PropRun
+{
+  type Aux[Thunk, Trans, F0[_]] = PropRun[Thunk, Trans] { type F[A] = F0[A] }
+
+  implicit def PropRun_Any[Thunk, Trans, F0[_]]
+  (implicit propThunk: PropThunk.Aux[Thunk, Trans, F0], syncF: Sync[F0], poolF: ConsConcurrent[F0])
+  : PropRun.Aux[Thunk, Trans, F0] =
+    new PropRun[Thunk, Trans] {
+      type F[A] = F0[A]
+      def apply(thunk: Thunk): PropertyTest[F] = propThunk(thunk)
+      def sync: Sync[F] = syncF
+      def pool: ConsConcurrent[F] = poolF
     }
 
-  def apply[F[_]: Sync, Thunk, Trans]
-  (concurrent: ExecutionContext => Concurrent[F])
+  def apply[Thunk, Trans]
+  (propRun: PropRun[Thunk, Trans])
   (thunk: Thunk)
-  (propGen: PropGen[F, Thunk, Trans])
-  : F[PropertyTestResult] =
-    PropertyTest.run(concurrent)(ScalacheckParams.default)(propGen.thunk(thunk))
+  : propRun.F[PropertyTestOutput[Trans]] = {
+    implicit def functor: Functor[propRun.F] = propRun.sync
+    PropertyTest.run(propRun.pool)(ScalacheckParams.default)(propRun(thunk))(propRun.sync)
+      .map(PropertyTestOutput(_))
+  }
 }

@@ -29,3 +29,6 @@ with SimpleAssertions
   implicit def timer: Timer[IO] =
     IO.timer(ExecutionContext.global)
 }
+
+trait IOTest
+extends SimpleTest[IO]
