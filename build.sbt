@@ -1,6 +1,6 @@
 ThisBuild / scalaVersion := "2.13.0"
 
-val core = pro(project, "core")
+val core = pro("core")
   .settings(
     libraryDependencies ++= List(
       "org.typelevel" %% "cats-effect" % "2.0.0",
@@ -8,15 +8,16 @@ val core = pro(project, "core")
       "org.scala-sbt" % "test-interface" % "1.0",
       "org.scalacheck" %% "scalacheck" % "1.14.0",
       "com.chuusai" %% "shapeless" % "2.3.3",
-      "org.specs2" %% "specs2-core" % "4.7.1"
+      "org.specs2" %% "specs2-core" % "4.7.1" % Test,
     ),
     testFrameworks += new TestFramework("klk.KlkFramework"),
   )
 
-val root = pro(project, ".")
+val root = basicProject(project.in(file(".")))
   .dependsOn(core)
   .aggregate(core)
   .settings(name := "kallikrein")
+  .settings(noPublish)
 
 import ReleaseTransformations._
 
