@@ -5,7 +5,7 @@
 ## module id
 
 ```sbt
-"io.tryp" %% "kallikrein" % "0.0.0"
+"io.tryp" %% "kallikrein" % "0.1.0"
 ```
 
 # Basics
@@ -20,10 +20,20 @@ extends klk.IOTest
 
 Tests are added by calling the `test` function in a class inheriting `klk.SimpleTest[F]`, where `F[_]` is an effect that
 implements `cats.effect.Sync`.
+`klk.IOTest` is a convenience trait using `cats.effect.IO`.
+
+The effect type of an individual test can be different from the main effect if there is an instance of `klk.Compile[F,
+G]`.
+For example, `EitherT` is supported out of the box:
+
+```scala
+test("EitherT")(EitherT.right(IO.pure(1 == 1)))
+```
+
+A `Left` value will be converted into a failure.
 
 Assertions are returned from the test thunk and can be anything, as long as there is an instance for `klk.TestResult`.
-The internal type representing the result is `KlkResult[A, B]`, where the parameters are the types of the expectation
-and result, which are both `Boolean` in the example.
+The internal type representing the result is `KlkResult`.
 
 # Resources
 
@@ -65,3 +75,5 @@ extends klk.IOTest
 ```
 
 This features a custom runner for the properties built on fs2.
+
+A second variant `forallNoShrink` does what it advertises.

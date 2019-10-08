@@ -1,5 +1,6 @@
 package klk
 
+import cats.data.EitherT
 import cats.effect.Bracket
 import shapeless.HList
 
@@ -17,11 +18,11 @@ object TransformTestThunk
     strip: StripResources.Aux[RunF, ResParams, Thunk, Thunk0],
     execute: ExecuteThunk.Aux[Thunk0, Output, TestF],
     compile: Compile[TestF, RunF],
-    result: TestResult[RunF, Output],
+    result: TestResult[Output],
   )
   : TransformTestThunk[RunF, ResParams, Thunk, Output] =
     new TransformTestThunk[RunF, ResParams, Thunk, Output] {
       def apply(resources: TestResources[ResParams])(thunk: Thunk): RunF[KlkResult] =
-        strip(resources)(thunk).use(t => result.handle(compile(execute(t))))
+        strip(resources)(thunk).use(t => EitherT(compile(execute(t))).map(result(_)).valueOr(KlkResult.failure))
     }
 }

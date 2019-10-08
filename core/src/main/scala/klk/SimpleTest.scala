@@ -10,12 +10,11 @@ import cats.kernel.Eq
 trait SimpleAssertions
 {
   def assert(desc: String)(value: Boolean): KlkResult =
-    KlkResult(value, KlkResultDetails.Simple(List(desc)))
+    KlkResult(value)(KlkResult.Details.Simple(List(desc)))
 
   def assertEqual[A: Show](target: A)(candidate: A)(implicit eql: Eq[A]): KlkResult =
-    KlkResult(
-      eql.eqv(target, candidate),
-      KlkResultDetails.Complex(List("values are not equal"), target.show, candidate.show),
+    KlkResult(eql.eqv(target, candidate))(
+      KlkResult.Details.Complex(List("values are not equal"), target.show, candidate.show),
     )
 }
 

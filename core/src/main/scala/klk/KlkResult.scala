@@ -3,47 +3,53 @@ package klk
 import cats.data.NonEmptyList
 import cats.kernel.Monoid
 
-sealed trait KlkResultDetails
-
-object KlkResultDetails
-{
-  case class NoDetails()
-  extends KlkResultDetails
-
-  case class Simple(info: List[String])
-  extends KlkResultDetails
-
-  case class Complex(desc: List[String], target: String, actual: String)
-  extends KlkResultDetails
-
-  case class Fatal(error: Throwable)
-  extends KlkResultDetails
-}
-
 sealed trait KlkResult
 
 object KlkResult
 extends KlkResultInstances
 {
+  sealed trait Details
+
+  object Details
+  {
+    case class NoDetails()
+    extends Details
+
+    case class Simple(info: List[String])
+    extends Details
+
+    case class Complex(desc: List[String], target: String, actual: String)
+    extends Details
+
+    case class Fatal(error: Throwable)
+    extends Details
+  }
+
   case object Zero
   extends KlkResult
 
-  case class Single(success: Boolean, details: KlkResultDetails)
+  case class Single(success: Boolean, details: Details)
   extends KlkResult
 
   case class Multi(results: NonEmptyList[KlkResult])
   extends KlkResult
 
-  def apply(success: Boolean, details: KlkResultDetails): KlkResult =
+  def apply(success: Boolean)(details: Details): KlkResult =
     Single(success, details)
 
-  def bool(success: Boolean): KlkResult =
-    Single(success, KlkResultDetails.NoDetails())
+  def success: Details => KlkResult =
+    apply(true)
 
-  def success: KlkResult => Boolean = {
+  def failure: Details => KlkResult =
+    apply(false)
+
+  def bool(success: Boolean): KlkResult =
+    Single(success, Details.NoDetails())
+
+  def successful: KlkResult => Boolean = {
     case Zero => false
     case Single(s, _) => s
-    case Multi(results) => results.exists(success)
+    case Multi(results) => results.exists(successful)
   }
 
   def list: KlkResult => List[KlkResult] = {
@@ -62,7 +68,7 @@ extends KlkResultInstances
     case Multi(NonEmptyList(h, t)) => b => Multi(NonEmptyList(h, t ++ list(b)))
   }
 
-  def failures: KlkResult => List[KlkResultDetails] = {
+  def failures: KlkResult => List[Details] = {
     case Single(false, d) => List(d)
     case Multi(results) => results.toList.flatMap(failures)
     case _ => Nil

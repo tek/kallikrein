@@ -3,7 +3,6 @@ package klk
 import scala.collection.mutable
 
 import cats.effect.Sync
-import cats.implicits._
 import shapeless.HNil
 
 case class SharedResource[RunF[_]: Sync, SharedRes]

@@ -65,7 +65,7 @@ object Test
   : RunF[KlkResult] =
     for {
       testResult <- thunk(res)
-        .recover { case NonFatal(a) => KlkResult(false, KlkResultDetails.Fatal(a)) }
+        .recover { case NonFatal(a) => KlkResult.failure(KlkResult.Details.Fatal(a)) }
       _ <- TestReporter.report[RunF](reporter, log)(desc)(testResult)
     } yield testResult
 }

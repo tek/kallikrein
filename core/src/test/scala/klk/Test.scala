@@ -2,7 +2,7 @@ package klk
 
 import scala.concurrent.duration.DurationInt
 
-import cats.data.Kleisli
+import cats.data.{EitherT, Kleisli}
 import cats.effect.{IO, Resource}
 import cats.implicits._
 import org.scalacheck.ForAllNoShrink
@@ -24,6 +24,8 @@ extends IOTest
     sys.error("boom")
 
   test("exception")(IO(frame1))
+
+  test("EitherT")(EitherT.right(IO.pure(1 == 1)))
 }
 
 class ForAllTest

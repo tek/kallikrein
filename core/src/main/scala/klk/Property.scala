@@ -110,7 +110,7 @@ object PropertyTestResult
   def formatArgs(args: List[Prop.Arg[_]]): List[String] =
     Indent(2)(args.flatMap(formatArg).toSet.toList)
 
-  def resultDetails: PropertyTestResult => KlkResultDetails = {
+  def resultDetails: PropertyTestResult => KlkResult.Details = {
     case PropertyTestResult(_, PropertyTestState.Stats(_, iterations, discarded), result) =>
       val message: List[String] = result.status match {
         case PropTest.Exhausted => List(s"exhausted after $iterations iterations, discarding $discarded")
@@ -122,7 +122,7 @@ object PropertyTestResult
           val exception = e.getMessage :: e.getStackTrace.toList.map(_.toString)
           "failed with exception" :: formatArgs(args) ::: labels.toList ::: exception
       }
-      KlkResultDetails.Simple(message)
+      KlkResult.Details.Simple(message)
   }
 
   def success: PropTest.Status => Boolean = {

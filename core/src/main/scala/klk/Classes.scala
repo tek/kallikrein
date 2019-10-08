@@ -3,7 +3,7 @@ package klk
 import scala.concurrent.ExecutionContext
 
 import cats.Functor
-import cats.arrow.FunctionK
+import cats.data.EitherT
 import cats.effect.{Concurrent, IO, Sync}
 import cats.implicits._
 import sbt.testing.Logger
@@ -27,7 +27,7 @@ case class TestLog(loggers: Array[Logger])
 trait TestReporter
 {
   def result[F[_]: Sync](log: TestLog): String => Boolean => F[Unit]
-  def failure[F[_]: Sync](log: TestLog): KlkResultDetails => F[Unit]
+  def failure[F[_]: Sync](log: TestLog): KlkResult.Details => F[Unit]
 }
 
 object TestReporter
@@ -47,14 +47,14 @@ object TestReporter
       .reverse
       .map(_.toString)
 
-  def formatFailure: KlkResultDetails => List[String] = {
-    case KlkResultDetails.NoDetails() =>
+  def formatFailure: KlkResult.Details => List[String] = {
+    case KlkResult.Details.NoDetails() =>
       List("test failed")
-    case KlkResultDetails.Simple(info) =>
+    case KlkResult.Details.Simple(info) =>
       info
-    case KlkResultDetails.Complex(desc, target, actual) =>
+    case KlkResult.Details.Complex(desc, target, actual) =>
       desc ::: Indent(2)(List(s"target: ${target.toString.green}", s"actual: ${actual.toString.magenta}"))
-    case KlkResultDetails.Fatal(error) =>
+    case KlkResult.Details.Fatal(error) =>
       s"${"test threw".blue} ${error.toString.magenta}" :: Indent(2)(sanitizeStacktrace(error.getStackTrace.toList))
   }
 
@@ -71,7 +71,7 @@ object TestReporter
   (desc: String)
   (result: KlkResult)
   : F[Unit] = {
-    reporter.result[F](log).apply(desc)(KlkResult.success(result)) *>
+    reporter.result[F](log).apply(desc)(KlkResult.successful(result)) *>
     KlkResult.failures(result).traverse_(reporter.failure[F](log))
   }
 
@@ -81,7 +81,7 @@ object TestReporter
       def result[F[_]: Sync](log: TestLog): String => Boolean => F[Unit] =
         desc => (log.info[F] _).compose(formatResult(desc))
 
-      def failure[F[_]: Sync](log: TestLog): KlkResultDetails => F[Unit] =
+      def failure[F[_]: Sync](log: TestLog): KlkResult.Details => F[Unit] =
         (log.info[F] _).compose(Indent(2)).compose(formatFailure)
     }
 }
@@ -118,41 +118,49 @@ object ConsConcurrent
     }
 }
 
-trait TestResult[F[_], Output]
+trait TestResult[Output]
 {
-  def handle(output: F[Output]): F[KlkResult]
+  def apply(output: Output): KlkResult
 }
 
 object TestResult
 {
-  implicit def TestResult_KlkResult[F[_]]: TestResult[F, KlkResult] =
-    new TestResult[F, KlkResult] {
-      def handle(output: F[KlkResult]): F[KlkResult] =
+  implicit def TestResult_KlkResult: TestResult[KlkResult] =
+    new TestResult[KlkResult] {
+      def apply(output: KlkResult): KlkResult =
         output
     }
 
-  implicit def TestResult_Boolean[F[_]: Functor]: TestResult[F, Boolean] =
-    new TestResult[F, Boolean] {
-      def handle(output: F[Boolean]): F[KlkResult] =
-        output.map(a => KlkResult(a, KlkResultDetails.NoDetails()))
+  implicit def TestResult_Boolean: TestResult[Boolean] =
+    new TestResult[Boolean] {
+      def apply(output: Boolean): KlkResult =
+        KlkResult(output)(KlkResult.Details.NoDetails())
     }
 
-  implicit def TestResult_PropertyTestOutput[F[_]: Functor, Trans]: TestResult[F, PropertyTestOutput[Trans]] =
-    new TestResult[F, PropertyTestOutput[Trans]] {
-      def handle(output: F[PropertyTestOutput[Trans]]): F[KlkResult] = {
-        output.map(result => KlkResult(result.result.success, PropertyTestResult.resultDetails(result.result)))
+  implicit def TestResult_PropertyTestOutput[Trans]: TestResult[PropertyTestOutput[Trans]] =
+    new TestResult[PropertyTestOutput[Trans]] {
+      def apply(output: PropertyTestOutput[Trans]): KlkResult = {
+        KlkResult(output.result.success)(PropertyTestResult.resultDetails(output.result))
       }
     }
 }
 
 trait Compile[F[_], G[_]]
-extends FunctionK[F, G]
+{
+  def apply[A](fa: F[A]): G[Either[KlkResult.Details, A]]
+}
 
 object Compile
 {
-  implicit def Compile_IO_IO: Compile[IO, IO] =
-    new Compile[IO, IO] {
-      def apply[A](fa: IO[A]): IO[A] =
-        fa
+  implicit def Compile_F_F[F[_]: Functor]: Compile[F, F] =
+    new Compile[F, F] {
+      def apply[A](fa: F[A]): F[Either[KlkResult.Details, A]] =
+        fa.map(Right(_))
+    }
+
+  implicit def Compile_EitherT_F[E]: Compile[EitherT[IO, E, ?], IO] =
+    new Compile[EitherT[IO, E, ?], IO] {
+      def apply[A](fa: EitherT[IO, E, A]): IO[Either[KlkResult.Details, A]] =
+        fa.leftMap(a => KlkResult.Details.Simple(List(a.toString))).value
     }
 }
