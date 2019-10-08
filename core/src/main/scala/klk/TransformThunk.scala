@@ -11,7 +11,7 @@ trait TransformTestThunk[RunF[_], ResParams <: HList, Thunk, A]
 object TransformTestThunk
 {
   implicit def TransformTestThunk_Any
-  [RunF[_]: Bracket[?[_], Throwable], ResParams <: HList, Thunk, Thunk0, TestF[_], Output]
+  [RunF[_]: Bracket[*[_], Throwable], ResParams <: HList, Thunk, Thunk0, TestF[_], Output]
   (
     implicit
     strip: StripResources.Aux[RunF, ResParams, Thunk, Thunk0],

@@ -15,7 +15,7 @@ object KlkTest
   : KlkResult =
     effect.run(test.thunk(log)(()))
 
-  def runResource[F[_]: Bracket[?[_], Throwable], R]
+  def runResource[F[_]: Bracket[*[_], Throwable], R]
   (log: TestLog)
   (effect: Compute[F])
   (resource: Resource[F, R])

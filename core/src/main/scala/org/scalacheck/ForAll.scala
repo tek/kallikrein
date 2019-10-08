@@ -84,12 +84,12 @@ object ForAllShrink
 
   def firstFailureOrSuccess[F[_]: Sync, A]
   (test: A => PropertyTest[F], prms0: Parameters)
-  (values: Stream[PropertyTest.K[F, ?], A])
-  : Pull[PropertyTest.K[F, ?], ShrinkResult[A], Unit] = {
+  (values: Stream[PropertyTest.K[F, *], A])
+  : Pull[PropertyTest.K[F, *], ShrinkResult[A], Unit] = {
     def spin
     (firstFailure: Option[ShrinkResult[A]])
-    (in: Stream[PropertyTest.K[F, ?], A])
-    : Pull[PropertyTest.K[F, ?], ShrinkResult[A], Unit] =
+    (in: Stream[PropertyTest.K[F, *], A])
+    : Pull[PropertyTest.K[F, *], ShrinkResult[A], Unit] =
       in.pull.uncons1.flatMap {
         case Some((value, tail)) =>
           for {

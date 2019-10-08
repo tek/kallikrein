@@ -13,6 +13,9 @@ import org.scalacheck.{Arbitrary, ForAllNoShrink, ForAllShrink, Gen, Prop, Test 
 import org.scalacheck.Test.{Parameters => TestParameters}
 import org.scalacheck.util.{FreqMap, Pretty}
 
+import StringColor.StringColorOps
+import StringColors.color
+
 case class ScalacheckParams(test: TestParameters, gen: Gen.Parameters, sizeStep: Int, maxDiscarded: Float)
 
 object ScalacheckParams
@@ -96,6 +99,17 @@ object PropertyTestResult
   def noInput: PropertyTestResult =
     PropertyTestResult(false, PropertyTestState.Stats.zero, PropTest.Result(PropTest.Exhausted, 0, 0, FreqMap.empty))
 
+  def formatArg: Prop.Arg[_] => List[String] = {
+    case Prop.Arg(_, _, _, _, arg, origArg) =>
+      val argFormatted = arg(Pretty.defaultParams)
+      val origArgFormatted = origArg(Pretty.defaultParams)
+      if (argFormatted == origArgFormatted) List(argFormatted.magenta)
+      else List(argFormatted.magenta, s"original: $origArgFormatted".blue)
+  }
+
+  def formatArgs(args: List[Prop.Arg[_]]): List[String] =
+    Indent(2)(args.flatMap(formatArg).toSet.toList)
+
   def resultDetails: PropertyTestResult => KlkResultDetails = {
     case PropertyTestResult(_, PropertyTestState.Stats(_, iterations, discarded), result) =>
       val message: List[String] = result.status match {
@@ -103,10 +117,10 @@ object PropertyTestResult
         case PropTest.Passed => List(s"passed after $iterations iterations")
         case PropTest.Proved(_) => List(s"proved after $iterations iterations")
         case PropTest.Failed(args, labels) =>
-          s"failed after $iterations iterations for" :: args.map(_.toString) ::: labels.toList
+          s"failed after $iterations iterations for" :: formatArgs(args) ::: labels.toList
         case PropTest.PropException(args, e, labels) =>
           val exception = e.getMessage :: e.getStackTrace.toList.map(_.toString)
-          "failed with exception" :: args.map(_.toString) ::: labels.toList ::: exception
+          "failed with exception" :: formatArgs(args) ::: labels.toList ::: exception
       }
       KlkResultDetails.Simple(message)
   }

@@ -3,10 +3,10 @@ package klk
 import scala.collection.mutable
 import scala.util.control.NonFatal
 
-import cats.Functor
+import cats.{Functor, Id}
 import cats.effect.{Bracket, Resource, Sync}
 import cats.implicits._
-import shapeless.{::, HList, HNil}
+import shapeless.HNil
 
 case class KlkTests[F[_]]()
 {
@@ -26,45 +26,6 @@ case class KlkTests[F[_]]()
     add(TestThunk(log => KlkTest.runResource(log)(compute)(resource)(tests.toList)))
 }
 
-case class TestResources[ResParams <: HList](resources: ResParams)
-
-object TestResources
-{
-  def empty: TestResources[HNil] =
-    TestResources(HNil)
-}
-
-case class ForAllBuilder[RunF[_], ResParams <: HList, Trans]
-(resources: TestResources[ResParams])
-(add: RunF[KlkResult] => Unit)
-{
-  def apply[Thunk]
-  (thunk: Thunk)
-  (implicit transform: TransformTestThunk[RunF, ResParams, Thunk, PropertyTestOutput[Trans]])
-  : Unit =
-    add(transform(resources)(thunk))
-}
-
-case class TestBuilder[RunF[_], ResParams <: HList]
-(resources: TestResources[ResParams])
-(add: RunF[KlkResult] => Unit)
-{
-  def apply[TestF[_], Thunk, Output]
-  (thunk: Thunk)
-  (implicit transform: TransformTestThunk[RunF, ResParams, Thunk, Output])
-  : Unit =
-    add(transform(resources)(thunk))
-
-  def forallNoShrink: ForAllBuilder[RunF, ResParams, PropTrans.Full] =
-    ForAllBuilder(resources)(add)
-
-  def forall: ForAllBuilder[RunF, ResParams, PropTrans.Shrink] =
-    ForAllBuilder(resources)(add)
-
-  def resource[TestF[_], R](r: Resource[TestF, R]): TestBuilder[RunF, Resource[TestF, R] :: ResParams] =
-    TestBuilder(TestResources(r :: resources.resources))(add)
-}
-
 trait TestInterface
 {
   type RunF[A]
@@ -80,10 +41,10 @@ extends TestInterface
 {
   type RunF[A] = RunF0[A]
 
-  private[this] def add(desc: String)(thunk: RunF[KlkResult]): Unit =
+  private[this] def add(desc: String)(thunk: Id[RunF[KlkResult]]): Unit =
     tests.plain(KlkTest(desc, Test.execute(desc)(reporter)(_ => thunk)))
 
-  def test(desc: String): TestBuilder[RunF, HNil] =
+  def test(desc: String): TestBuilder[RunF, HNil, Id] =
     TestBuilder(TestResources.empty)(add(desc))
 
   def sharedResource[R](resource: Resource[RunF, R]): SharedResource[RunF, R] = {

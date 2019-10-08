@@ -26,7 +26,7 @@ object StripResources
         Resource.pure(thunk)
     }
 
-  implicit def StripResources_HList[TestF[_], RunF[_]: Bracket[?[_], Throwable], H, T <: HList, ThunkF, Output]
+  implicit def StripResources_HList[TestF[_], RunF[_]: Bracket[*[_], Throwable], H, T <: HList, ThunkF, Output]
   (implicit next: StripResources.Aux[RunF, T, ThunkF, TestF[Output]])
   : Aux[RunF, Resource[RunF, H] :: T, H => ThunkF, TestF[Output]] =
     new StripResources[RunF, Resource[RunF, H] :: T, H => ThunkF] {

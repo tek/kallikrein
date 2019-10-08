@@ -11,6 +11,13 @@ import sbt.testing.Logger
 import StringColor._
 import StringColors.color
 
+object Indent
+{
+  def apply(spaces: Int)(lines: List[String]): List[String] =
+    lines.map(a => s"${" " * spaces}$a")
+
+}
+
 case class TestLog(loggers: Array[Logger])
 {
   def info[F[_]: Sync](lines: List[String]): F[Unit] =
@@ -25,9 +32,6 @@ trait TestReporter
 
 object TestReporter
 {
-  def indent(spaces: Int)(lines: List[String]): List[String] =
-    lines.map(a => s"${" " * spaces}$a")
-
   def packageFrameFilter: List[String] =
     List(
       "cats.effect",
@@ -49,9 +53,9 @@ object TestReporter
     case KlkResultDetails.Simple(info) =>
       info
     case KlkResultDetails.Complex(desc, target, actual) =>
-      desc ::: indent(2)(List(s"target: ${target.toString.green}", s"actual: ${actual.toString.magenta}"))
+      desc ::: Indent(2)(List(s"target: ${target.toString.green}", s"actual: ${actual.toString.magenta}"))
     case KlkResultDetails.Fatal(error) =>
-      s"${"test threw".blue} ${error.toString.magenta}" :: indent(2)(sanitizeStacktrace(error.getStackTrace.toList))
+      s"${"test threw".blue} ${error.toString.magenta}" :: Indent(2)(sanitizeStacktrace(error.getStackTrace.toList))
   }
 
   def successSymbol: Boolean => String = {
@@ -78,7 +82,7 @@ object TestReporter
         desc => (log.info[F] _).compose(formatResult(desc))
 
       def failure[F[_]: Sync](log: TestLog): KlkResultDetails => F[Unit] =
-        (log.info[F] _).compose(indent(2)).compose(formatFailure)
+        (log.info[F] _).compose(Indent(2)).compose(formatFailure)
     }
 }
 

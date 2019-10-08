@@ -62,7 +62,12 @@ extends IOTest
 
   eightySix.test("shared resource 2").apply(i => IO.pure(i == 68))
 
-  eightySix.test("shared resource shrink").forall(i => (j: Int) => IO.pure(i < j))
+  val testResource: Resource[IO, Int] = Resource.pure(4)
+
+  eightySix
+    .test("shared resource shrink")
+    .resource(testResource)
+    .forall((i: Int) => (j: Int) => (k: Int) => IO.pure(i + j < k))
 }
 
 class ResTest
