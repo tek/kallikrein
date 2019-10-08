@@ -8,12 +8,6 @@ import cats.effect.{Bracket, Resource, Sync}
 import cats.implicits._
 import shapeless.{::, HList, HNil}
 
-case class BasicTestResources[F[_], G[_], O](
-  compile: Compile[F, G],
-  result: TestResult[G, O],
-  reporter: TestReporter,
-)
-
 case class KlkTests[F[_]]()
 {
   val tests: mutable.Buffer[TestThunk] =
@@ -26,10 +20,10 @@ case class KlkTests[F[_]]()
     add(TestThunk(log => KlkTest.runPlain(log)(compute)(test)))
 
   def resource[SharedRes]
-  (r: SharedResource[F, SharedRes])
-  (implicit bracket: Bracket[F, Throwable])
+  (resource: Resource[F, SharedRes], tests: mutable.Buffer[KlkTest[F, SharedRes]])
+  (implicit bracket: Bracket[F, Throwable], compute: Compute[F])
   : Unit =
-    add(TestThunk(log => KlkTest.runResource(log)(r.compute)(r.resource)(r.tests.toList)))
+    add(TestThunk(log => KlkTest.runResource(log)(compute)(resource)(tests.toList)))
 }
 
 case class TestResources[ResParams <: HList](resources: ResParams)
@@ -75,9 +69,9 @@ trait TestInterface
 {
   type RunF[A]
 
-  def reporter: TestReporter
+  private[klk] def reporter: TestReporter
 
-  val tests: KlkTests[RunF] =
+  private[klk] val tests: KlkTests[RunF] =
     KlkTests()
 }
 
@@ -86,19 +80,16 @@ extends TestInterface
 {
   type RunF[A] = RunF0[A]
 
-  def add(desc: String)(thunk: RunF[KlkResult]): Unit =
+  private[this] def add(desc: String)(thunk: RunF[KlkResult]): Unit =
     tests.plain(KlkTest(desc, Test.execute(desc)(reporter)(_ => thunk)))
 
   def test(desc: String): TestBuilder[RunF, HNil] =
     TestBuilder(TestResources.empty)(add(desc))
 
-  def sharedResource[R]
-  (resource: Resource[RunF, R])
-  : SharedResource[RunF, R] =
-  {
-    val r = SharedResource[RunF, R](implicitly, resource, mutable.Buffer.empty)(reporter)
-    tests.resource(r)
-    r
+  def sharedResource[R](resource: Resource[RunF, R]): SharedResource[RunF, R] = {
+    val rTests: mutable.Buffer[KlkTest[RunF, R]] = mutable.Buffer.empty
+    tests.resource(resource, rTests)
+    SharedResource[RunF, R](rTests)(reporter)
   }
 }
 

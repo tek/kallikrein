@@ -89,6 +89,9 @@ trait Compute[F[_]]
 
 object Compute
 {
+  def apply[F[_]](implicit instance: Compute[F]): Compute[F] =
+    instance
+
   implicit def io: Compute[IO] =
     new Compute[IO] {
       def run[A](thunk: IO[A]): A =

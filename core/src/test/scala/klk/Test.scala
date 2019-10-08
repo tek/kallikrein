@@ -61,6 +61,8 @@ extends IOTest
   eightySix.test("shared resource 1").apply(i => IO.pure(i == 86))
 
   eightySix.test("shared resource 2").apply(i => IO.pure(i == 68))
+
+  eightySix.test("shared resource shrink").forall(i => (j: Int) => IO.pure(i < j))
 }
 
 class ResTest
