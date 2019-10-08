@@ -5,7 +5,7 @@
 ## module id
 
 ```sbt
-"io.tryp" %% "kallikrein" % "0.1.0"
+"io.tryp" %% "kallikrein-core" % "0.1.0"
 ```
 
 # Basics
