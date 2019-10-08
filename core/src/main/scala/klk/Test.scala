@@ -41,25 +41,17 @@ object TestResources
 }
 
 case class ForAllBuilder[RunF[_], ResParams <: HList, Trans]
-(tests: KlkTests[RunF], desc: String)
-(reporter: TestReporter)
 (resources: TestResources[ResParams])
+(add: RunF[KlkResult] => Unit)
 {
-  def apply[TestF[_], Thunk]
+  def apply[Thunk]
   (thunk: Thunk)
-  (
-    implicit
-    transform: TransformTestThunk[RunF, ResParams, Thunk, PropertyTestOutput[Trans]],
-    compute: Compute[RunF],
-    syncRun: Sync[RunF],
-  )
+  (implicit transform: TransformTestThunk[RunF, ResParams, Thunk, PropertyTestOutput[Trans]])
   : Unit =
-    tests.plain(KlkTest(desc, Test.execute(desc)(reporter)(_ => transform(resources)(thunk))))
+    add(transform(resources)(thunk))
 }
 
 case class TestBuilder[RunF[_], ResParams <: HList]
-(tests: KlkTests[RunF], desc: String)
-(reporter: TestReporter)
 (resources: TestResources[ResParams])
 (add: RunF[KlkResult] => Unit)
 {
@@ -70,13 +62,13 @@ case class TestBuilder[RunF[_], ResParams <: HList]
     add(transform(resources)(thunk))
 
   def forallNoShrink: ForAllBuilder[RunF, ResParams, PropTrans.Full] =
-    ForAllBuilder(tests, desc)(reporter)(resources)
+    ForAllBuilder(resources)(add)
 
   def forall: ForAllBuilder[RunF, ResParams, PropTrans.Shrink] =
-    ForAllBuilder(tests, desc)(reporter)(resources)
+    ForAllBuilder(resources)(add)
 
   def resource[TestF[_], R](r: Resource[TestF, R]): TestBuilder[RunF, Resource[TestF, R] :: ResParams] =
-    TestBuilder(tests, desc)(reporter)(TestResources(r :: resources.resources))(add)
+    TestBuilder(TestResources(r :: resources.resources))(add)
 }
 
 trait TestInterface
@@ -98,13 +90,13 @@ extends TestInterface
     tests.plain(KlkTest(desc, Test.execute(desc)(reporter)(_ => thunk)))
 
   def test(desc: String): TestBuilder[RunF, HNil] =
-    TestBuilder(tests, desc)(reporter)(TestResources[HNil](HNil))(add(desc))
+    TestBuilder(TestResources.empty)(add(desc))
 
   def sharedResource[R]
   (resource: Resource[RunF, R])
   : SharedResource[RunF, R] =
   {
-    val r = SharedResource(resource)(reporter)
+    val r = SharedResource[RunF, R](implicitly, resource, mutable.Buffer.empty)(reporter)
     tests.resource(r)
     r
   }
