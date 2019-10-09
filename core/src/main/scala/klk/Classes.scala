@@ -143,24 +143,36 @@ object TestResult
         KlkResult(output.result.success)(PropertyTestResult.resultDetails(output.result))
       }
     }
+
+  implicit def TestResult_Either[A, B]
+  (implicit inner: TestResult[B])
+  : TestResult[Either[A, B]] =
+    new TestResult[Either[A, B]] {
+      def apply(output: Either[A, B]): KlkResult =
+        output.map(inner(_)).valueOr(a => KlkResult.simpleFailure(List(a.toString)))
+    }
 }
 
-trait Compile[F[_], G[_]]
+trait Compile[F[_], G[_], A]
 {
-  def apply[A](fa: F[A]): G[Either[KlkResult.Details, A]]
+  def apply(fa: F[A]): G[KlkResult]
 }
 
 object Compile
 {
-  implicit def Compile_F_F[F[_]: Functor]: Compile[F, F] =
-    new Compile[F, F] {
-      def apply[A](fa: F[A]): F[Either[KlkResult.Details, A]] =
-        fa.map(Right(_))
+  implicit def Compile_F_F[F[_]: Functor, A]
+  (implicit result: TestResult[A])
+  : Compile[F, F, A] =
+    new Compile[F, F, A] {
+      def apply(fa: F[A]): F[KlkResult] =
+        fa.map(result(_))
     }
 
-  implicit def Compile_EitherT_F[E]: Compile[EitherT[IO, E, ?], IO] =
-    new Compile[EitherT[IO, E, ?], IO] {
-      def apply[A](fa: EitherT[IO, E, A]): IO[Either[KlkResult.Details, A]] =
-        fa.leftMap(a => KlkResult.Details.Simple(List(a.toString))).value
+  implicit def Compile_EitherT_F[F[_]: Functor, G[_], E, A]
+  (implicit inner: Compile[F, G, Either[E, A]])
+  : Compile[EitherT[F, E, ?], G, A] =
+    new Compile[EitherT[F, E, ?], G, A] {
+      def apply(fa: EitherT[F, E, A]): G[KlkResult] =
+        inner(fa.value)
     }
 }

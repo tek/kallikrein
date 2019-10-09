@@ -27,7 +27,7 @@ G]`.
 For example, `EitherT` is supported out of the box:
 
 ```scala
-test("EitherT")(EitherT.right(IO.pure(1 == 1)))
+test("EitherT")(EitherT.right[Unit](IO.pure(1 == 1)))
 ```
 
 A `Left` value will be converted into a failure.

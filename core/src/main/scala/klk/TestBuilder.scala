@@ -15,33 +15,43 @@ object TestResources
 
 case class ConsTest[RunF[_], TestRes <: HList, TestShape[_], Output]
 (resources: TestResources[TestRes])
+{
+  def apply[Thunk]
+  (thunk: TestShape[Thunk])
+  (implicit transform: TransformTestThunk[RunF, TestRes, Thunk, Output], functor: Functor[TestShape])
+  : TestShape[RunF[KlkResult]] =
+    thunk.map(transform(resources))
+}
+
+case class AddTest[RunF[_], TestRes <: HList, TestShape[_], Output]
+(cons: ConsTest[RunF, TestRes, TestShape, Output])
 (add: TestShape[RunF[KlkResult]] => Unit)
 {
   def apply[Thunk]
   (thunk: TestShape[Thunk])
   (implicit transform: TransformTestThunk[RunF, TestRes, Thunk, Output], functor: Functor[TestShape])
   : Unit =
-    add(thunk.map(transform(resources)))
+    add(cons(thunk))
 }
 
 case class TestBuilder[RunF[_], TestRes <: HList, TestShape[_]]
 (resources: TestResources[TestRes])
 (add: TestShape[RunF[KlkResult]] => Unit)
 {
-  def cons[Output]: ConsTest[RunF, TestRes, TestShape, Output] =
-    ConsTest(resources)(add)
+  def adder[Output]: AddTest[RunF, TestRes, TestShape, Output] =
+    AddTest(ConsTest[RunF, TestRes, TestShape, Output](resources))(add)
 
   def apply[TestF[_], Thunk, Output]
   (thunk: TestShape[Thunk])
   (implicit transform: TransformTestThunk[RunF, TestRes, Thunk, Output], functor: Functor[TestShape])
   : Unit =
-    cons(thunk)
+    adder(thunk)
 
-  def forallNoShrink: ConsTest[RunF, TestRes, TestShape, PropertyTestOutput[PropTrans.Full]] =
-    cons
+  def forallNoShrink: AddTest[RunF, TestRes, TestShape, PropertyTestOutput[PropTrans.Full]] =
+    adder
 
-  def forall: ConsTest[RunF, TestRes, TestShape, PropertyTestOutput[PropTrans.Shrink]] =
-    cons
+  def forall: AddTest[RunF, TestRes, TestShape, PropertyTestOutput[PropTrans.Shrink]] =
+    adder
 
   def resource[TestF[_], R]
   (res: Resource[TestF, R])

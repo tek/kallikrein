@@ -16,8 +16,6 @@ extends AutoPlugin
     def basicProject(p: Project) =
       p.settings(
         organization := "io.tryp",
-        addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.0"),
-        addCompilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3"),
         fork := true,
         scalacOptions ++= List(
           "-deprecation",
@@ -38,8 +36,8 @@ extends AutoPlugin
       basicProject(Project(n, file(n)))
       .settings(
         name := s"$projectName-$n",
-        addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.0"),
-        addCompilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3"),
+        addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+        addCompilerPlugin("org.typelevel" % "kind-projector" % "0.11.0" cross CrossVersion.full),
         publishMavenStyle := true,
         publishTo := Some(
           if (isSnapshot.value) Opts.resolver.sonatypeSnapshots

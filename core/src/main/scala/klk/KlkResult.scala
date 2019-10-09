@@ -43,13 +43,16 @@ extends KlkResultInstances
   def failure: Details => KlkResult =
     apply(false)
 
+  def simpleFailure: List[String] => KlkResult =
+    failure.compose(Details.Simple)
+
   def bool(success: Boolean): KlkResult =
     Single(success, Details.NoDetails())
 
   def successful: KlkResult => Boolean = {
     case Zero => false
     case Single(s, _) => s
-    case Multi(results) => results.exists(successful)
+    case Multi(results) => results.filterNot(successful).isEmpty
   }
 
   def list: KlkResult => List[KlkResult] = {

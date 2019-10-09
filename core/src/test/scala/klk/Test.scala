@@ -25,7 +25,7 @@ extends IOTest
 
   test("exception")(IO(frame1))
 
-  test("EitherT")(EitherT.right(IO.pure(1 == 1)))
+  test("EitherT")(EitherT.right[Unit](IO.pure(1 == 1)))
 }
 
 class ForAllTest
