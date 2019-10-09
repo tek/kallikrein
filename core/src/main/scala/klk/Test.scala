@@ -17,13 +17,13 @@ case class KlkTests[F[_]]()
     tests += test
 
   def plain(test: KlkTest[F, Unit])(implicit compute: Compute[F], functor: Functor[F]): Unit =
-    add(TestThunk(log => KlkTest.runPlain(log)(compute)(test)))
+    add(TestThunk(test.desc, log => KlkTest.runPlain(log)(compute)(test)))
 
   def resource[SharedRes]
   (resource: Resource[F, SharedRes], tests: mutable.Buffer[KlkTest[F, SharedRes]])
   (implicit bracket: Bracket[F, Throwable], compute: Compute[F])
   : Unit =
-    add(TestThunk(log => KlkTest.runResource(log)(compute)(resource)(tests.toList)))
+    add(TestThunk("shared resource", log => KlkTest.runResource(log)(compute)(resource)(tests.toList)))
 }
 
 trait TestInterface

@@ -56,7 +56,7 @@ extends Framework
         args0
 
       def done: String =
-        "done!"
+        ""
 
       def remoteArgs: Array[String] =
         remoteArgs0

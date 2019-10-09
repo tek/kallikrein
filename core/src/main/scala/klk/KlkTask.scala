@@ -3,17 +3,57 @@ package klk
 import java.lang.reflect.Constructor
 
 import cats.implicits._
-import sbt.testing.{EventHandler, Fingerprint, Logger, SubclassFingerprint, Task, TaskDef}
+import sbt.testing.{
+  Event,
+  EventHandler,
+  Fingerprint,
+  Logger,
+  OptionalThrowable,
+  Selector,
+  Status,
+  SubclassFingerprint,
+  Task,
+  TaskDef,
+  TestSelector
+}
 
-case class TestThunk(thunk: TestLog => KlkResult)
+case class TestThunk(desc: String, thunk: TestLog => KlkResult)
+
+case class FinishEvent(
+  status: Status,
+  duration: Long,
+  fingerprint: Fingerprint,
+  fullyQualifiedName: String,
+  selector: Selector,
+  throwable: OptionalThrowable,
+)
+extends Event
+
+object FinishEvent
+{
+  def cons(taskDef: TaskDef, name: String, status: Status, duration: Long): FinishEvent =
+    FinishEvent(
+      status,
+      duration,
+      taskDef.fingerprint,
+      taskDef.fullyQualifiedName,
+      new TestSelector(name),
+      new OptionalThrowable,
+    )
+}
 
 object ExecuteTask
 {
   def apply[F[_]]
+  (taskDef: TaskDef)
   (test: TestThunk)
   : (EventHandler, Array[Logger]) => Array[Task] =
-    (_, log) => {
-      test.thunk(TestLog(log))
+    (events, log) => {
+      val startTime = System.currentTimeMillis
+      val success = KlkResult.successful(test.thunk(TestLog(log)))
+      val status = if (success) Status.Success else Status.Failure
+      val duration = System.currentTimeMillis - startTime
+      events.handle(FinishEvent.cons(taskDef, test.desc, status, duration))
       Array()
     }
 }
@@ -35,7 +75,7 @@ object KlkTask
   }
 
   def fromTest(taskDef: TaskDef)(test: TestInterface): Array[KlkTask] =
-    test.tests.tests.toList.map(a => KlkTask(taskDef, ExecuteTask(a), Array.empty)).toArray
+    test.tests.tests.toList.map(a => KlkTask(taskDef, ExecuteTask(taskDef)(a), Array.empty)).toArray
 
   def classNameSuffix: Fingerprint => String = {
     case a: SubclassFingerprint if a.isModule => "$"
