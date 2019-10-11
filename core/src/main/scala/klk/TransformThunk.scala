@@ -15,7 +15,7 @@ object TransformTestThunk
   (
     implicit
     strip: StripResources.Aux[RunF, ResParams, Thunk, Thunk0],
-    execute: ExecuteThunk.Aux[Params, Thunk0, Output, TestF],
+    execute: ExecuteThunk.Aux[Params, Thunk0, TestF, Output],
     compile: Compile[TestF, RunF, Output],
   )
   : TransformTestThunk[RunF, ResParams, Params, Thunk] =
