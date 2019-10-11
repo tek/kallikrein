@@ -134,8 +134,6 @@ object PropertyTestResult
   }
 }
 
-case class PropertyTestOutput[Trans](result: PropertyTestResult)
-
 case class PropertyTest[F[_]](test: Kleisli[F, Gen.Parameters, Prop.Result])
 
 object PropertyTest
@@ -322,9 +320,8 @@ object PropRun
   def apply[Thunk, Trans]
   (propRun: PropRun[Thunk, Trans])
   (thunk: Thunk)
-  : propRun.F[PropertyTestOutput[Trans]] = {
+  : propRun.F[PropertyTestResult] = {
     implicit def functor: Functor[propRun.F] = propRun.sync
     PropertyTest.run(propRun.pool)(ScalacheckParams.default)(propRun(thunk))(propRun.sync)
-      .map(PropertyTestOutput(_))
   }
 }

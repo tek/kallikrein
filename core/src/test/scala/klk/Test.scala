@@ -38,7 +38,7 @@ extends IOTest
       }
     }
     val params = ScalacheckParams.cons(TestParameters.default, Parameters.default.withInitialSeed(10L))
-    PropertyTest.run(ConsConcurrent.io)(params)(f).map(PropertyTestOutput(_))
+    PropertyTest.run(ConsConcurrent.io)(params)(f)
   }
 }
 

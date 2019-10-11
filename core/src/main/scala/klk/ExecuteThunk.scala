@@ -1,6 +1,8 @@
 package klk
 
-trait ExecuteThunk[Thunk, Output]
+final class NoExecutionParams
+
+trait ExecuteThunk[Params, Thunk, Output]
 {
   type TestF[A]
 
@@ -9,11 +11,11 @@ trait ExecuteThunk[Thunk, Output]
 
 trait ExecuteThunk1
 {
-  type Aux[Thunk, Output, TestF0[_]] = ExecuteThunk[Thunk, Output] { type TestF[A] = TestF0[A] }
+  type Aux[Params, Thunk, Output, TestF0[_]] = ExecuteThunk[Params, Thunk, Output] { type TestF[A] = TestF0[A] }
 
   implicit def ExecuteThunk_Any[Output, TestF0[_]]
-  : ExecuteThunk.Aux[TestF0[Output], Output, TestF0] =
-    new ExecuteThunk[TestF0[Output], Output] {
+  : ExecuteThunk.Aux[NoExecutionParams, TestF0[Output], Output, TestF0] =
+    new ExecuteThunk[NoExecutionParams, TestF0[Output], Output] {
       type TestF[A] = TestF0[A]
       def apply(thunk: TestF0[Output]): TestF[Output] =
         thunk
@@ -23,12 +25,12 @@ trait ExecuteThunk1
 object ExecuteThunk
 extends ExecuteThunk1
 {
-  implicit def ExecuteThunk_PropertyTestOutput[Thunk, Trans, TestF0[_]]
+  implicit def ExecuteThunk_PropertyTestOutput[Trans, Thunk, TestF0[_]]
   (implicit propRun: PropRun.Aux[Thunk, Trans, TestF0])
-  : ExecuteThunk.Aux[Thunk, PropertyTestOutput[Trans], TestF0] =
-    new ExecuteThunk[Thunk, PropertyTestOutput[Trans]] {
+  : ExecuteThunk.Aux[Trans, Thunk, PropertyTestResult, TestF0] =
+    new ExecuteThunk[Trans, Thunk, PropertyTestResult] {
       type TestF[A] = TestF0[A]
-      def apply(thunk: Thunk): TestF[PropertyTestOutput[Trans]] =
+      def apply(thunk: Thunk): TestF[PropertyTestResult] =
         PropRun(propRun)(thunk)
     }
 }

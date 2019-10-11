@@ -13,23 +13,23 @@ object TestResources
     TestResources(HNil)
 }
 
-case class ConsTest[RunF[_], TestRes <: HList, TestShape[_], Output]
+case class ConsTest[RunF[_], TestRes <: HList, TestShape[_]]
 (resources: TestResources[TestRes])
 {
-  def apply[Thunk]
+  def apply[Params, Thunk]
   (thunk: TestShape[Thunk])
-  (implicit transform: TransformTestThunk[RunF, TestRes, Thunk, Output], functor: Functor[TestShape])
+  (implicit transform: TransformTestThunk[RunF, TestRes, Params, Thunk], functor: Functor[TestShape])
   : TestShape[RunF[KlkResult]] =
     thunk.map(transform(resources))
 }
 
-case class AddTest[RunF[_], TestRes <: HList, TestShape[_], Output]
-(cons: ConsTest[RunF, TestRes, TestShape, Output])
+case class AddTest[RunF[_], TestRes <: HList, Params, TestShape[_]]
+(cons: ConsTest[RunF, TestRes, TestShape])
 (add: TestShape[RunF[KlkResult]] => Unit)
 {
   def apply[Thunk]
   (thunk: TestShape[Thunk])
-  (implicit transform: TransformTestThunk[RunF, TestRes, Thunk, Output], functor: Functor[TestShape])
+  (implicit transform: TransformTestThunk[RunF, TestRes, Params, Thunk], functor: Functor[TestShape])
   : Unit =
     add(cons(thunk))
 }
@@ -38,16 +38,19 @@ case class TestBuilder[RunF[_], TestRes <: HList, TestShape[_]]
 (resources: TestResources[TestRes])
 (add: TestShape[RunF[KlkResult]] => Unit)
 {
-  def adder[Output]: AddTest[RunF, TestRes, TestShape, Output] =
-    AddTest(ConsTest[RunF, TestRes, TestShape, Output](resources))(add)
+  def adder[Params, Output]: AddTest[RunF, TestRes, Params, TestShape] =
+    AddTest(ConsTest[RunF, TestRes, TestShape](resources))(add)
 
-  def apply[TestF[_], Thunk, Output]
+  def apply[TestF[_], Thunk]
   (thunk: TestShape[Thunk])
-  (implicit transform: TransformTestThunk[RunF, TestRes, Thunk, Output], functor: Functor[TestShape])
+  (implicit transform: TransformTestThunk[RunF, TestRes, NoExecutionParams, Thunk], functor: Functor[TestShape])
   : Unit =
     adder(thunk)
 
-  def forallNoShrink: AddTest[RunF, TestRes, TestShape, PropertyTestOutput[PropTrans.Full]] =
+  def forallNoShrink: AddTest[RunF, TestRes, PropTrans.Full, TestShape] =
+    adder
+
+  def forall: AddTest[RunF, TestRes, PropTrans.Shrink, TestShape] =
     adder
 
   def forall: AddTest[RunF, TestRes, TestShape, PropertyTestOutput[PropTrans.Shrink]] =

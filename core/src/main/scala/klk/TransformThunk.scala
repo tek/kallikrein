@@ -3,7 +3,7 @@ package klk
 import cats.effect.Bracket
 import shapeless.HList
 
-trait TransformTestThunk[RunF[_], ResParams <: HList, Thunk, A]
+trait TransformTestThunk[RunF[_], ResParams <: HList, Params, Thunk]
 {
   def apply(resources: TestResources[ResParams])(thunk: Thunk): RunF[KlkResult]
 }
@@ -11,15 +11,15 @@ trait TransformTestThunk[RunF[_], ResParams <: HList, Thunk, A]
 object TransformTestThunk
 {
   implicit def TransformTestThunk_Any
-  [RunF[_]: Bracket[*[_], Throwable], ResParams <: HList, Thunk, Thunk0, TestF[_], Output]
+  [RunF[_]: Bracket[*[_], Throwable], ResParams <: HList, Params, Thunk, Thunk0, TestF[_], Output]
   (
     implicit
     strip: StripResources.Aux[RunF, ResParams, Thunk, Thunk0],
-    execute: ExecuteThunk.Aux[Thunk0, Output, TestF],
+    execute: ExecuteThunk.Aux[Params, Thunk0, Output, TestF],
     compile: Compile[TestF, RunF, Output],
   )
-  : TransformTestThunk[RunF, ResParams, Thunk, Output] =
-    new TransformTestThunk[RunF, ResParams, Thunk, Output] {
+  : TransformTestThunk[RunF, ResParams, Params, Thunk] =
+    new TransformTestThunk[RunF, ResParams, Params, Thunk] {
       def apply(resources: TestResources[ResParams])(thunk: Thunk): RunF[KlkResult] =
         strip(resources)(thunk).use(t => compile(execute(t)))
     }

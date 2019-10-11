@@ -137,10 +137,10 @@ object TestResult
         KlkResult(output)(KlkResult.Details.NoDetails())
     }
 
-  implicit def TestResult_PropertyTestOutput[Trans]: TestResult[PropertyTestOutput[Trans]] =
-    new TestResult[PropertyTestOutput[Trans]] {
-      def apply(output: PropertyTestOutput[Trans]): KlkResult = {
-        KlkResult(output.result.success)(PropertyTestResult.resultDetails(output.result))
+  implicit def TestResult_PropertyTestResult: TestResult[PropertyTestResult] =
+    new TestResult[PropertyTestResult] {
+      def apply(output: PropertyTestResult): KlkResult = {
+        KlkResult(output.success)(PropertyTestResult.resultDetails(output))
       }
     }
 
