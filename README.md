@@ -77,3 +77,15 @@ extends klk.IOTest
 This features a custom runner for the properties built on fs2.
 
 A second variant `forallNoShrink` does what it advertises.
+
+# Law Checking
+
+cats-discipline laws can be checked like this:
+
+```scala
+class SomeTest
+extends klk.IOTest
+{
+  test("laws").laws(IO.pure(FunctorTests[List].functor[Int, Int, Int]))
+}
+```
