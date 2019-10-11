@@ -285,13 +285,13 @@ object PropThunk
 {
   type Aux[Thunk, Trans, F0[_]] = PropThunk[Thunk, Trans] { type F[A] = F0[A] }
 
-  implicit def PropThunk_Output[F0[_]: Functor, P, Trans]
-  (implicit pv: P => Prop)
-  : PropThunk.Aux[F0[P], Trans, F0] =
-    new PropThunk[F0[P], Trans] {
+  implicit def PropThunk_Output[F0[_]: Functor, Param, Output, Trans]
+  (implicit pv: Output => Prop, trans: PropTrans[F0, Trans, Param])
+  : PropThunk.Aux[Param => F0[Output], Trans, F0] =
+    new PropThunk[Param => F0[Output], Trans] {
       type F[A] = F0[A]
-      def apply(f: F[P]): PropertyTest[F] =
-        PropertyTest(Kleisli(params => f.map(p => pv(p)(params))))
+      def apply(f: Param => F[Output]): PropertyTest[F] =
+        trans(p => PropertyTest(Kleisli(params => f(p).map(out => pv(out)(params)))))
     }
 
   implicit def PropThunk_f[F0[_], Thunk, P, Trans]
@@ -300,7 +300,7 @@ object PropThunk
     new PropThunk[P => Thunk, Trans] {
       type F[A] = F0[A]
       def apply(f: P => Thunk): PropertyTest[F] =
-        trans((p: P) => next(f(p)))
+        trans(p => next(f(p)))
     }
 }
 
