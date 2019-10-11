@@ -1,6 +1,9 @@
 # Intro
 
-**kallikrein** is a Scala testing framework for sbt focused on running cats-effect based programs.
+**kallikrein** is a Scala testing framework for sbt focused on running [cats-effect] based programs.
+
+If you're into matcher DSLs, check out [xpct], which is a framework-agnostic typed matcher lib with support for
+**kallikrein**.
 
 ## module id
 
@@ -64,7 +67,7 @@ The shared resource will be acquired only once and supplied to all tests that us
 
 # Property Testing
 
-Scalacheck can be used in a test by calling the `forall` method on a test builder:
+[Scalacheck] can be used in a test by calling the `forall` method on a test builder:
 
 ```scala
 class SomeTest
@@ -80,7 +83,7 @@ A second variant `forallNoShrink` does what it advertises.
 
 # Law Checking
 
-cats-discipline laws can be checked like this:
+[cats-discipline] laws can be checked like this:
 
 ```scala
 class SomeTest
@@ -89,3 +92,8 @@ extends klk.IOTest
   test("laws").laws(IO.pure(FunctorTests[List].functor[Int, Int, Int]))
 }
 ```
+
+[cats-effect]: https://github.com/typelevel/cats-effect
+[xpct]: https://github.com/tek/xpct
+[scalacheck]: https://github.com/typelevel/scalacheck
+[cats-discipline]: https://github.com/typelevel/cats-discipline
