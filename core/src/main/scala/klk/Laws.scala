@@ -1,6 +1,6 @@
 package klk
 
-import cats.{Applicative, Monad}
+import cats.Applicative
 import cats.data.NonEmptyList
 import cats.implicits._
 import org.scalacheck.Prop
@@ -42,7 +42,6 @@ object LawsTest
   def rule[F[_]: Applicative](propRun: PropRun.Aux[F[Prop], PropTrans.Shrink, F])(prop: Prop): F[PropertyTestResult] =
     PropRun(propRun)(prop.pure[F])
 
-  // TODO parent props
   def apply[F[_]: Applicative, L <: Laws]
   (propRun: PropRun.Aux[F[Prop], PropTrans.Shrink, F])
   (rules: L#RuleSet)
@@ -53,29 +52,4 @@ object LawsTest
       case Nil =>
         LawsResult.empty.pure[F]
     }
-}
-
-trait LawsRun[Thunk]
-{
-  type TestF[A]
-
-  def apply(thunk: Thunk): TestF[LawsResult]
-}
-
-object LawsRun
-{
-  type Aux[Thunk, TestF0[_]] = LawsRun[Thunk] { type TestF[A] = TestF0[A] }
-
-  implicit def LawsRun_Any[F[_]: Monad, L <: Laws]
-  (implicit propRun: PropRun.Aux[F[Prop], PropTrans.Shrink, F])
-  : Aux[F[L#RuleSet], F] =
-    new LawsRun[F[L#RuleSet]] {
-      type TestF[A] = F[A]
-
-      def apply(thunk: F[L#RuleSet]): F[LawsResult] =
-        thunk.flatMap(LawsTest[F, L](propRun)(_))
-    }
-
-  def apply[Thunk](lawsRun: LawsRun[Thunk])(thunk: Thunk): lawsRun.TestF[LawsResult] =
-    lawsRun(thunk)
 }

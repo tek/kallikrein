@@ -1,5 +1,10 @@
 package klk
 
+import cats.Monad
+import cats.implicits._
+import org.scalacheck.Prop
+import org.typelevel.discipline.Laws
+
 final class NoExecutionParams
 
 trait ExecuteThunk[Params, Thunk]
@@ -41,13 +46,13 @@ extends ExecuteThunk1
         PropRun(propRun)(thunk)
     }
 
-  implicit def ExecuteThunk_LawsResult[Thunk, TestF0[_]]
-  (implicit lawsRun: LawsRun.Aux[Thunk, TestF0])
-  : ExecuteThunk.Aux[LawsParams, Thunk, TestF0, LawsResult] =
-    new ExecuteThunk[LawsParams, Thunk] {
+  implicit def ExecuteThunk_LawsResult[TestF0[_]: Monad, L <: Laws]
+  (implicit propRun: PropRun.Aux[TestF0[Prop], PropTrans.Shrink, TestF0])
+  : ExecuteThunk.Aux[LawsParams, TestF0[L#RuleSet], TestF0, LawsResult] =
+    new ExecuteThunk[LawsParams, TestF0[L#RuleSet]] {
       type TestF[A] = TestF0[A]
       type Output = LawsResult
-      def apply(thunk: Thunk): TestF[LawsResult] =
-        LawsRun(lawsRun)(thunk)
+      def apply(thunk: TestF[L#RuleSet]): TestF[LawsResult] =
+        thunk.flatMap(LawsTest(propRun))
     }
 }
