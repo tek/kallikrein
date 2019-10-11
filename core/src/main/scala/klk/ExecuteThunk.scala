@@ -33,4 +33,13 @@ extends ExecuteThunk1
       def apply(thunk: Thunk): TestF[PropertyTestResult] =
         PropRun(propRun)(thunk)
     }
+
+  implicit def ExecuteThunk_LawsResult[Thunk, Laws, TestF0[_]]
+  (implicit lawsRun: LawsRun.Aux[Thunk, Laws, TestF0])
+  : ExecuteThunk.Aux[Laws, Thunk, LawsResult, TestF0] =
+    new ExecuteThunk[Laws, Thunk, LawsResult] {
+      type TestF[A] = TestF0[A]
+      def apply(thunk: Thunk): TestF[LawsResult] =
+        LawsRun(lawsRun)(thunk)
+    }
 }

@@ -53,7 +53,7 @@ case class TestBuilder[RunF[_], TestRes <: HList, TestShape[_]]
   def forall: AddTest[RunF, TestRes, PropTrans.Shrink, TestShape] =
     adder
 
-  def forall: AddTest[RunF, TestRes, TestShape, PropertyTestOutput[PropTrans.Shrink]] =
+  def laws[Class[_[A]], Subject[_]]: AddTest[RunF, TestRes, FunctorialLaws[Class, Subject], TestShape] =
     adder
 
   def resource[TestF[_], R]

@@ -2,6 +2,7 @@ package klk
 
 import scala.concurrent.duration.DurationInt
 
+import cats.Functor
 import cats.data.{EitherT, Kleisli}
 import cats.effect.{IO, Resource}
 import cats.implicits._
@@ -81,3 +82,22 @@ extends IOTest
 
   test("resource").resource(res1).resource(res2)((i: Int) => (j: Int) => IO.pure(i == j))
 }
+
+case class Funky[A](a: A)
+
+object Funky
+{
+  implicit def Functor_Funky: Functor[Funky] =
+    new Functor[Funky] {
+      def map[A, B](fa: Funky[A])(f: A => B): Funky[B] =
+        Funky(f(fa.a))
+    }
+}
+
+// class LawsTest
+// extends IOTest
+// {
+//   test("laws").laws[Functor, Funky] {
+//     IO(LawsResult())
+//   }
+// }
