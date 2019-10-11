@@ -132,6 +132,15 @@ object PropertyTestResult
     case PropTest.Proved(_) => true
     case PropTest.Passed => true
   }
+
+  def klkResult(result: PropertyTestResult): KlkResult =
+    KlkResult(result.success)(PropertyTestResult.resultDetails(result))
+
+  implicit def TestResult_PropertyTestResult: TestResult[PropertyTestResult] =
+    new TestResult[PropertyTestResult] {
+      def apply(result: PropertyTestResult): KlkResult =
+        klkResult(result)
+    }
 }
 
 case class PropertyTest[F[_]](test: Kleisli[F, Gen.Parameters, Prop.Result])

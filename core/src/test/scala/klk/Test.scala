@@ -6,8 +6,11 @@ import cats.Functor
 import cats.data.{EitherT, Kleisli}
 import cats.effect.{IO, Resource}
 import cats.implicits._
+import cats.kernel.Eq
+import cats.laws.discipline.FunctorTests
 import org.scalacheck.ForAllNoShrink
 import org.scalacheck.Gen.Parameters
+import org.scalacheck.ScalacheckShapeless._
 import org.scalacheck.Test.{Parameters => TestParameters}
 
 class BasicTest
@@ -92,12 +95,13 @@ object Funky
       def map[A, B](fa: Funky[A])(f: A => B): Funky[B] =
         Funky(f(fa.a))
     }
+
+  implicit def Eq_Funky[A: Eq]: Eq[Funky[A]] =
+    Eq.fromUniversalEquals
 }
 
-// class LawsTest
-// extends IOTest
-// {
-//   test("laws").laws[Functor, Funky] {
-//     IO(LawsResult())
-//   }
-// }
+class LawsTest
+extends IOTest
+{
+  test("laws").laws(IO.pure(FunctorTests[Funky].functor[Int, Int, Int]))
+}

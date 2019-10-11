@@ -137,13 +137,6 @@ object TestResult
         KlkResult(output)(KlkResult.Details.NoDetails())
     }
 
-  implicit def TestResult_PropertyTestResult: TestResult[PropertyTestResult] =
-    new TestResult[PropertyTestResult] {
-      def apply(output: PropertyTestResult): KlkResult = {
-        KlkResult(output.success)(PropertyTestResult.resultDetails(output))
-      }
-    }
-
   implicit def TestResult_Either[A, B]
   (implicit inner: TestResult[B])
   : TestResult[Either[A, B]] =
