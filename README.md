@@ -96,4 +96,4 @@ extends klk.IOTest
 [cats-effect]: https://github.com/typelevel/cats-effect
 [xpct]: https://github.com/tek/xpct
 [scalacheck]: https://github.com/typelevel/scalacheck
-[cats-discipline]: https://github.com/typelevel/cats-discipline
+[cats-discipline]: https://github.com/typelevel/discipline
