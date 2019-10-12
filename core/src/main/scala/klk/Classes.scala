@@ -2,7 +2,7 @@ package klk
 
 import scala.concurrent.ExecutionContext
 
-import cats.Functor
+import cats.{Applicative, Functor}
 import cats.data.EitherT
 import cats.effect.{Concurrent, IO, Sync}
 import cats.implicits._
@@ -18,16 +18,22 @@ object Indent
 
 }
 
-case class TestLog(loggers: Array[Logger])
+case class SbtTestLog(loggers: Array[Logger])
+
+object SbtTestLog
 {
-  def info[F[_]: Sync](lines: List[String]): F[Unit] =
-    loggers.toList.traverse_(logger => lines.traverse_(line => Sync[F].delay(logger.info(line))))
+  def sync[F[_]: Sync](log: SbtTestLog)(f: Logger => String => Unit): List[String] => F[Unit] =
+    lines =>
+      log.loggers.toList.traverse_(logger => lines.traverse_(line => Sync[F].delay(f(logger)(line))))
+
+  def unsafe(log: SbtTestLog)(f: Logger => String => Unit)(lines: List[String]): Unit =
+      log.loggers.toList.foreach(logger => lines.foreach(line => f(logger)(line)))
 }
 
-trait TestReporter
+trait TestReporter[F[_]]
 {
-  def result[F[_]: Sync](log: TestLog): String => Boolean => F[Unit]
-  def failure[F[_]: Sync](log: TestLog): KlkResult.Details => F[Unit]
+  def result: String => Boolean => F[Unit]
+  def failure: KlkResult.Details => F[Unit]
 }
 
 object TestReporter
@@ -66,40 +72,39 @@ object TestReporter
   def formatResult(desc: String)(success: Boolean): List[String] =
     List(s"${successSymbol(success)} $desc")
 
-  def report[F[_]: Sync]
-  (reporter: TestReporter, log: TestLog)
+  def report[F[_]: Applicative]
+  (reporter: TestReporter[F])
   (desc: String)
   (result: KlkResult)
-  : F[Unit] = {
-    reporter.result[F](log).apply(desc)(KlkResult.successful(result)) *>
-    KlkResult.failures(result).traverse_(reporter.failure[F](log))
-  }
+  : F[Unit] =
+    reporter.result(desc)(KlkResult.successful(result)) *>
+    KlkResult.failures(result).traverse_(reporter.failure)
 
 
-  def stdout: TestReporter =
-    StdoutTestReporter
+  def sbt[F[_]: Sync](log: SbtTestLog): TestReporter[F] =
+    SbtTestReporter(log)
 
-  def noop: TestReporter =
-    NoopTestReporter
+  def noop[F[_]: Applicative]: TestReporter[F] =
+    NoopTestReporter()
 }
 
-object StdoutTestReporter
-extends TestReporter
+case class SbtTestReporter[F[_]: Sync](log: SbtTestLog)
+extends TestReporter[F]
 {
-  def result[F[_]: Sync](log: TestLog): String => Boolean => F[Unit] =
-    desc => (log.info[F] _).compose(TestReporter.formatResult(desc))
+  def result: String => Boolean => F[Unit] =
+    desc => SbtTestLog.sync[F](log)(_.info).compose(TestReporter.formatResult(desc))
 
-  def failure[F[_]: Sync](log: TestLog): KlkResult.Details => F[Unit] =
-    (log.info[F] _).compose(Indent(2)).compose(TestReporter.formatFailure)
+  def failure: KlkResult.Details => F[Unit] =
+    SbtTestLog.sync[F](log)(_.error).compose(Indent(2)).compose(TestReporter.formatFailure)
 }
 
-object NoopTestReporter
-extends TestReporter
+case class NoopTestReporter[F[_]: Applicative]()
+extends TestReporter[F]
 {
-  def result[F[_]: Sync](log: TestLog): String => Boolean => F[Unit] =
+  def result: String => Boolean => F[Unit] =
     _ => _ => ().pure[F]
 
-  def failure[F[_]: Sync](log: TestLog): KlkResult.Details => F[Unit] =
+  def failure: KlkResult.Details => F[Unit] =
     _ => ().pure[F]
 }
 

@@ -6,7 +6,7 @@ object KlkClassFingerprint
 extends SubclassFingerprint
 {
   def superclassName: String =
-    "klk.TestInterface"
+    "klk.TestMarker"
 
   def isModule: Boolean =
     false
@@ -19,7 +19,7 @@ object KlkModuleFingerprint
 extends SubclassFingerprint
 {
   def superclassName: String =
-    "klk.TestInterface"
+    "klk.TestMarker"
 
   def isModule: Boolean =
     true

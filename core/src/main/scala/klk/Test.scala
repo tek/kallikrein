@@ -8,64 +8,74 @@ import cats.effect.{Bracket, Resource, Sync}
 import cats.implicits._
 import shapeless.HNil
 
-case class KlkTests[F[_]]()
+case class KlkTests[F[_], FR](tests: mutable.Buffer[TestThunk[FR]])
 {
-  val tests: mutable.Buffer[TestThunk] =
-    mutable.Buffer.empty
-
-  def add(test: TestThunk): Unit =
+  def add(test: TestThunk[FR]): Unit =
     tests += test
 
-  def plain(test: KlkTest[F, Unit])(implicit compute: Compute[F], functor: Functor[F]): Unit =
-    add(TestThunk(test.desc, log => KlkTest.runPlain(log)(compute)(test)))
+  def plain
+  (test: KlkTest[F, Unit])
+  (implicit compute: Compute[F], functor: Functor[F], fw: TestFramework[F, FR])
+  : Unit =
+    add(TestThunk(test.desc, KlkTest.runPlain(compute)(test)))
 
   def resource[SharedRes]
-  (resource: Resource[F, SharedRes], tests: mutable.Buffer[KlkTest[F, SharedRes]])
-  (implicit bracket: Bracket[F, Throwable], compute: Compute[F])
+  (resource: Resource[F, SharedRes], builder: SharedResource[F, SharedRes])
+  (implicit bracket: Bracket[F, Throwable], compute: Compute[F], fw: TestFramework[F, FR])
   : Unit =
-    add(TestThunk("shared resource", log => KlkTest.runResource(log)(compute)(resource)(tests.toList)))
+    add(TestThunk("shared resource", KlkTest.runResource(compute)(resource)(builder.tests)))
 }
 
-trait TestInterface
+object KlkTests
 {
-  type RunF[A]
-
-  private[klk] def reporter: TestReporter
-
-  private[klk] val tests: KlkTests[RunF] =
-    KlkTests()
+  def cons[F[_], FR]: KlkTests[F, FR] =
+    KlkTests(mutable.Buffer.empty)
 }
 
-abstract class Test[RunF0[_]: Compute: Sync]
-extends TestInterface
+case class Tests[FR](tests: List[TestThunk[FR]])
+
+private[klk] trait TestMarker
+
+abstract class TestInterface[FR]
+extends TestMarker
 {
-  type RunF[A] = RunF0[A]
+  def tests: Tests[FR]
+}
+
+abstract class Test[RunF[_]: Compute: Sync, FR]
+(implicit testFramework: TestFramework[RunF, FR])
+extends TestInterface[FR]
+{
+  private[this] val testsDsl: KlkTests[RunF, FR] =
+    KlkTests.cons
+
+  def tests: Tests[FR] =
+    Tests(testsDsl.tests.toList)
 
   private[this] def add(desc: String)(thunk: Id[RunF[KlkResult]]): Unit =
-    tests.plain(KlkTest(desc, Test.execute(desc)(reporter)(_ => thunk)))
+    testsDsl.plain(KlkTest[RunF, Unit](desc, Test.execute(desc)(_ => thunk)))
 
-  def test(desc: String): TestBuilder[RunF, HNil, Id] =
+  def test(desc: String): TestBuilder[RunF, HNil, Id, Unit] =
     TestBuilder(TestResources.empty)(add(desc))
 
   def sharedResource[R](resource: Resource[RunF, R]): SharedResource[RunF, R] = {
-    val rTests: mutable.Buffer[KlkTest[RunF, R]] = mutable.Buffer.empty
-    tests.resource(resource, rTests)
-    SharedResource[RunF, R](rTests)(reporter)
+    val res = SharedResource.cons[RunF, R]
+    testsDsl.resource(resource, res)
+    res
   }
 }
 
 object Test
 {
-  def execute[RunF[_]: Sync, O, SharedRes]
+  def execute[RunF[_]: Sync, O, SharedRes, FR]
   (desc: String)
-  (reporter: TestReporter)
   (thunk: SharedRes => RunF[KlkResult])
-  (log: TestLog)
-  (res: SharedRes)
+  (reporter: TestReporter[RunF])
+  (sharedRes: SharedRes)
   : RunF[KlkResult] =
     for {
-      testResult <- thunk(res)
+      testResult <- thunk(sharedRes)
         .recover { case NonFatal(a) => KlkResult.failure(KlkResult.Details.Fatal(a)) }
-      _ <- TestReporter.report[RunF](reporter, log)(desc)(testResult)
+        _ <- TestReporter.report[RunF](reporter)(desc)(testResult)
     } yield testResult
 }

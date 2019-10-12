@@ -19,12 +19,9 @@ trait SimpleAssertions
 }
 
 trait SimpleTest[F[_]]
-extends Test[F]
+extends Test[F, SbtResources]
 with SimpleAssertions
 {
-  def reporter: TestReporter =
-    TestReporter.stdout
-
   implicit def timer: Timer[IO] =
     IO.timer(ExecutionContext.global)
 }
