@@ -92,7 +92,8 @@ case class SbtTestReporter[F[_]: Sync](log: SbtTestLog)
 extends TestReporter[F]
 {
   def result: String => Boolean => F[Unit] =
-    desc => SbtTestLog.sync[F](log)(_.info).compose(TestReporter.formatResult(desc))
+    desc => success =>
+      SbtTestLog.sync[F](log)(if (success) _.info else _.error).apply(TestReporter.formatResult(desc)(success))
 
   def failure: KlkResult.Details => F[Unit] =
     SbtTestLog.sync[F](log)(_.error).compose(Indent(2)).compose(TestReporter.formatFailure)

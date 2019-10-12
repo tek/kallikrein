@@ -8,27 +8,27 @@ import cats.effect.{Bracket, Resource, Sync}
 import cats.implicits._
 import shapeless.HNil
 
-case class KlkTests[F[_], FR](tests: mutable.Buffer[TestThunk[FR]])
+case class KlkTests[F[_]: Compute: TestFramework[*[_], FR], FR](tests: mutable.Buffer[TestThunk[FR]])
 {
   def add(test: TestThunk[FR]): Unit =
     tests += test
 
   def plain
   (test: KlkTest[F, Unit])
-  (implicit compute: Compute[F], functor: Functor[F], fw: TestFramework[F, FR])
+  (implicit functor: Functor[F])
   : Unit =
-    add(TestThunk(test.desc, KlkTest.runPlain(compute)(test)))
+    add(TestThunk(test.desc, KlkTest.runPlain(test)))
 
   def resource[SharedRes]
   (resource: Resource[F, SharedRes], builder: SharedResource[F, SharedRes])
-  (implicit bracket: Bracket[F, Throwable], compute: Compute[F], fw: TestFramework[F, FR])
+  (implicit bracket: Bracket[F, Throwable])
   : Unit =
-    add(TestThunk("shared resource", KlkTest.runResource(compute)(resource)(builder.tests)))
+    add(TestThunk("shared resource", KlkTest.runResource(resource)(builder.tests)))
 }
 
 object KlkTests
 {
-  def cons[F[_], FR]: KlkTests[F, FR] =
+  def cons[F[_]: Compute: TestFramework[*[_], FR], FR]: KlkTests[F, FR] =
     KlkTests(mutable.Buffer.empty)
 }
 
@@ -42,8 +42,7 @@ extends TestMarker
   def tests: Tests[FR]
 }
 
-abstract class Test[RunF[_]: Compute: Sync, FR]
-(implicit testFramework: TestFramework[RunF, FR])
+abstract class Test[RunF[_]: Compute: Sync: TestFramework[*[_], FR], FR]
 extends TestInterface[FR]
 {
   private[this] val testsDsl: KlkTests[RunF, FR] =
@@ -67,7 +66,7 @@ extends TestInterface[FR]
 
 object Test
 {
-  def execute[RunF[_]: Sync, O, SharedRes, FR]
+  def execute[RunF[_]: Sync, SharedRes, FR]
   (desc: String)
   (thunk: SharedRes => RunF[KlkResult])
   (reporter: TestReporter[RunF])
