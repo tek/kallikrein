@@ -77,13 +77,30 @@ object TestReporter
 
 
   def stdout: TestReporter =
-    new TestReporter {
-      def result[F[_]: Sync](log: TestLog): String => Boolean => F[Unit] =
-        desc => (log.info[F] _).compose(formatResult(desc))
+    StdoutTestReporter
 
-      def failure[F[_]: Sync](log: TestLog): KlkResult.Details => F[Unit] =
-        (log.info[F] _).compose(Indent(2)).compose(formatFailure)
-    }
+  def noop: TestReporter =
+    NoopTestReporter
+}
+
+object StdoutTestReporter
+extends TestReporter
+{
+  def result[F[_]: Sync](log: TestLog): String => Boolean => F[Unit] =
+    desc => (log.info[F] _).compose(TestReporter.formatResult(desc))
+
+  def failure[F[_]: Sync](log: TestLog): KlkResult.Details => F[Unit] =
+    (log.info[F] _).compose(Indent(2)).compose(TestReporter.formatFailure)
+}
+
+object NoopTestReporter
+extends TestReporter
+{
+  def result[F[_]: Sync](log: TestLog): String => Boolean => F[Unit] =
+    _ => _ => ().pure[F]
+
+  def failure[F[_]: Sync](log: TestLog): KlkResult.Details => F[Unit] =
+    _ => ().pure[F]
 }
 
 trait Compute[F[_]]
