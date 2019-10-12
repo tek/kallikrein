@@ -100,7 +100,7 @@ object Funky
     Eq.fromUniversalEquals
 }
 
-class LawsTest
+class FunctorLawsTest
 extends IOTest
 {
   test("laws").laws(IO.pure(FunctorTests[Funky].functor[Int, Int, Int]))

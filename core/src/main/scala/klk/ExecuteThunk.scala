@@ -47,7 +47,7 @@ extends ExecuteThunk1
     }
 
   implicit def ExecuteThunk_LawsResult[TestF0[_]: Monad, L <: Laws]
-  (implicit propRun: PropRun.Aux[TestF0[Prop], PropTrans.Shrink, TestF0])
+  (implicit propRun: PropRun.Aux[TestF0[Prop], LawsParams, TestF0])
   : ExecuteThunk.Aux[LawsParams, TestF0[L#RuleSet], TestF0, LawsResult] =
     new ExecuteThunk[LawsParams, TestF0[L#RuleSet]] {
       type TestF[A] = TestF0[A]

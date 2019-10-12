@@ -326,6 +326,7 @@ object PropRun
       def pool: ConsConcurrent[F] = poolF
     }
 
+  // TODO parameterize params
   def apply[Thunk, Trans]
   (propRun: PropRun[Thunk, Trans])
   (thunk: Thunk)
