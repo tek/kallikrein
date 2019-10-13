@@ -7,7 +7,7 @@ import org.specs2.mutable.Specification
 import org.specs2.specification.core.Fragment
 import shapeless.HNil
 
-class KlkSpecification[RunF[_]: Sync: Compute: TestFramework[*[_], NoopResources.type]]
+abstract class KlkSpecification[RunF[_]: Sync: Compute: TestFramework[*[_], NoopResources.type]]
 extends Specification
 {
   def test
