@@ -6,7 +6,6 @@ import cats.{Applicative, Functor}
 import cats.data.EitherT
 import cats.effect.{Concurrent, IO, Sync}
 import cats.implicits._
-import sbt.testing.Logger
 
 import StringColor._
 import StringColors.color
@@ -16,18 +15,6 @@ object Indent
   def apply(spaces: Int)(lines: List[String]): List[String] =
     lines.map(a => s"${" " * spaces}$a")
 
-}
-
-case class SbtTestLog(loggers: Array[Logger])
-
-object SbtTestLog
-{
-  def sync[F[_]: Sync](log: SbtTestLog)(f: Logger => String => Unit): List[String] => F[Unit] =
-    lines =>
-      log.loggers.toList.traverse_(logger => lines.traverse_(line => Sync[F].delay(f(logger)(line))))
-
-  def unsafe(log: SbtTestLog)(f: Logger => String => Unit)(lines: List[String]): Unit =
-      log.loggers.toList.foreach(logger => lines.foreach(line => f(logger)(line)))
 }
 
 trait TestReporter[F[_]]
@@ -80,23 +67,8 @@ object TestReporter
     reporter.result(desc)(KlkResult.successful(result)) *>
     KlkResult.failures(result).traverse_(reporter.failure)
 
-
-  def sbt[F[_]: Sync](log: SbtTestLog): TestReporter[F] =
-    SbtTestReporter(log)
-
   def noop[F[_]: Applicative]: TestReporter[F] =
     NoopTestReporter()
-}
-
-case class SbtTestReporter[F[_]: Sync](log: SbtTestLog)
-extends TestReporter[F]
-{
-  def result: String => Boolean => F[Unit] =
-    desc => success =>
-      SbtTestLog.sync[F](log)(if (success) _.info else _.error).apply(TestReporter.formatResult(desc)(success))
-
-  def failure: KlkResult.Details => F[Unit] =
-    SbtTestLog.sync[F](log)(_.error).compose(Indent(2)).compose(TestReporter.formatFailure)
 }
 
 case class NoopTestReporter[F[_]: Applicative]()

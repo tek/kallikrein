@@ -8,7 +8,15 @@ If you're into matcher DSLs, check out [xpct], which is a framework-agnostic typ
 ## module id
 
 ```sbt
-"io.tryp" %% "kallikrein-core" % "0.1.0"
+"io.tryp" %% "kallikrein-sbt" % "0.1.0"
+```
+
+## sbt
+
+To use the framework in a project, specify the setting:
+
+```sbt
+testFrameworks += new TestFramework("klk.KlkFramework")
 ```
 
 # Basics

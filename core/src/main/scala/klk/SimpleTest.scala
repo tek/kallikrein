@@ -18,13 +18,10 @@ trait SimpleAssertions
     )
 }
 
-trait SimpleTest[F[_]]
-extends Test[F, SbtResources]
+trait SimpleTestBase[F[_], FR]
+extends Test[F, FR]
 with SimpleAssertions
 {
   implicit def timer: Timer[IO] =
     IO.timer(ExecutionContext.global)
 }
-
-trait IOTest
-extends SimpleTest[IO]
