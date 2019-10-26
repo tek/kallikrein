@@ -38,7 +38,6 @@ extends AutoPlugin
         addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
         addCompilerPlugin("org.typelevel" % "kind-projector" % "0.11.0" cross CrossVersion.full),
         publishMavenStyle := true,
-        publish / scalacOptions += "-Xfatal-warnings",
         publishTo := Some(
           if (isSnapshot.value) Opts.resolver.sonatypeSnapshots
           else Resolver.url("sonatype staging", url("https://oss.sonatype.org/service/local/staging/deploy/maven2"))

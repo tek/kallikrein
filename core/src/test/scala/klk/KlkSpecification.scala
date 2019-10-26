@@ -14,7 +14,7 @@ extends Specification
   (f: TestBuilder[RunF, HNil, Id, RunF[KlkResult]] => RunF[KlkResult])
   : KlkResult = {
     val th: RunF[KlkResult] = f(TestBuilder.cons(identity))
-    val kt = KlkTest[RunF, Unit]("test", Test.execute("test")(_ => th))
+    val kt = KlkTest.plain("test")(th)
     KlkTest.runPlain(kt)(NoopResources)
   }
 
@@ -43,8 +43,8 @@ extends Specification
   : KlkResult = {
     val sr = SharedResource.cons[RunF, R]
     val thunks: List[R => RunF[KlkResult]] = f(TestBuilder.cons(identity))
-    val kt = thunks.map(th => KlkTest[RunF, R]("test", Test.execute("test")(th)))
-    KlkTest.runResource[RunF, R, NoopResources.type](resource)(kt)(NoopResources)
+    val kt = thunks.map(th => KlkTest.cons("test")(th))
+    KlkTest.runResource(resource)(kt)(NoopResources)
   }
 
   def assert

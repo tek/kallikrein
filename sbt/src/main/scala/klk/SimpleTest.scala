@@ -7,3 +7,9 @@ extends SimpleTestBase[F, SbtResources]
 
 trait IOTest
 extends SimpleTest[IO]
+
+trait SimpleComposeTest[F[_]]
+extends ComposeTest[F, SbtResources]
+
+trait IOComposeTest
+extends SimpleComposeTest[IO]

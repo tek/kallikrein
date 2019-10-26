@@ -1,10 +1,6 @@
 package klk
 
-import scala.concurrent.ExecutionContext
-
 import cats.Show
-import cats.effect.{IO, Timer}
-import cats.implicits._
 import cats.kernel.Eq
 
 trait SimpleAssertions
@@ -19,9 +15,5 @@ trait SimpleAssertions
 }
 
 trait SimpleTestBase[F[_], FR]
-extends Test[F, FR]
+extends DslTest[F, FR]
 with SimpleAssertions
-{
-  implicit def timer: Timer[IO] =
-    IO.timer(ExecutionContext.global)
-}

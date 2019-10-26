@@ -2,7 +2,6 @@ package klk
 
 import java.lang.reflect.Constructor
 
-import cats.implicits._
 import sbt.testing.{
   Event,
   EventHandler,
@@ -40,20 +39,26 @@ object FinishEvent
     )
 }
 
-object ExecuteTask
+object ExecuteTests
 {
-  def apply[F[_]]
-  (taskDef: TaskDef)
-  (test: TestThunk[SbtResources])
-  : (EventHandler, Array[Logger]) => Array[Task] =
+  def status(success: Boolean): Status = if (success) Status.Success else Status.Failure
+
+  def sendResult(taskDef: TaskDef)(events: EventHandler)(result: TestStats): Unit =
+    events.handle(FinishEvent.cons(
+      taskDef,
+      result.desc,
+      status(KlkResult.successful(result.result)),
+      result.duration,
+    ))
+
+  def apply(taskDef: TaskDef)(test: FrameworkTest[SbtResources]): (EventHandler, Array[Logger]) => Array[Task] = {
     (events, log) => {
-      val startTime = System.currentTimeMillis
-      val success = KlkResult.successful(test.thunk(SbtResources(SbtTestLog(log))))
-      val status = if (success) Status.Success else Status.Failure
-      val duration = System.currentTimeMillis - startTime
-      events.handle(FinishEvent.cons(taskDef, test.desc, status, duration))
+      test
+        .run(SbtResources(SbtTestLog(log)))
+        .foreach(ExecuteTests.sendResult(taskDef)(events))
       Array()
     }
+  }
 }
 
 case class KlkTask(taskDef: TaskDef, exe: (EventHandler, Array[Logger]) => Array[Task], tags: Array[String])
@@ -96,8 +101,8 @@ object KlkTask
     }
   }
 
-  def fromTest(taskDef: TaskDef)(test: TestInterface[SbtResources]): List[KlkTask] =
-    test.tests.tests.map(a => KlkTask(taskDef, ExecuteTask(taskDef)(a), Array.empty))
+  def fromTest(taskDef: TaskDef)(test: FrameworkTest[SbtResources]): KlkTask =
+    KlkTask(taskDef, ExecuteTests(taskDef)(test), Array.empty)
 
   def classNameSuffix: Fingerprint => String = {
     case a: SubclassFingerprint if a.isModule => "$"
@@ -110,21 +115,21 @@ object KlkTask
   def safe[A](error: Error.Details)(f: => A): Either[Error, A] =
     Either.catchOnly[Throwable](f).leftMap(e => Error(error, Some(e)))
 
-  def loadClass(loader: ClassLoader)(name: String): Either[Error, Class[TestInterface[SbtResources]]] =
+  def loadClass(loader: ClassLoader)(name: String): Either[Error, Class[FrameworkTest[SbtResources]]] =
     for {
       cls <- safe(Error.Details.LoadClass(name))(loader.loadClass(name))
-      cast <- safe(Error.Details.CastClass(name, cls))(cls.asInstanceOf[Class[TestInterface[SbtResources]]])
+      cast <- safe(Error.Details.CastClass(name, cls))(cls.asInstanceOf[Class[FrameworkTest[SbtResources]]])
     } yield cast
 
-  def findCtor(cls: Class[TestInterface[SbtResources]]): Either[Error, Constructor[TestInterface[SbtResources]]] =
+  def findCtor(cls: Class[FrameworkTest[SbtResources]]): Either[Error, Constructor[FrameworkTest[SbtResources]]] =
     for {
       ctors <- safe(Error.Details.Ctors(cls))(cls.getDeclaredConstructors)
       ctor <- Either.fromOption(ctors.headOption, Error(Error.Details.NoCtor(cls), None))
       _ <- safe(Error.Details.SetAccessible(ctor))(ctor.setAccessible(true))
-      cast <- safe(Error.Details.CastCtor(ctor))(ctor.asInstanceOf[Constructor[TestInterface[SbtResources]]])
+      cast <- safe(Error.Details.CastCtor(ctor))(ctor.asInstanceOf[Constructor[FrameworkTest[SbtResources]]])
     } yield cast
 
-  def fromTaskDef(loader: ClassLoader)(taskDef: TaskDef): Either[Error, List[KlkTask]] =
+  def fromTaskDef(loader: ClassLoader)(taskDef: TaskDef): Either[Error, KlkTask] =
     for {
       cls <- loadClass(loader)(className(taskDef))
       ctor <- findCtor(cls)
@@ -139,7 +144,7 @@ object KlkTasks
     case KlkTask.Error.Details.LoadClass(name) =>
       s"could not load class $name:"
     case KlkTask.Error.Details.CastClass(name, cls) =>
-      s"could not cast class $name ($cls) to TestInterface:"
+      s"could not cast class $name ($cls) to FrameworkTest:"
     case KlkTask.Error.Details.Ctors(cls) =>
       s"error when getting ctors for $cls:"
     case KlkTask.Error.Details.NoCtor(cls) =>
@@ -163,12 +168,12 @@ object KlkTasks
         logError(loggers)(error(details) :: exception.toList.map(_.getMessage))
   }
 
-  def errorTask(taskDef: TaskDef)(error: KlkTask.Error): List[KlkTask] =
-    List(KlkTask(taskDef, taskImpl(error), Array.empty))
+  def errorTask(taskDef: TaskDef)(error: KlkTask.Error): Task =
+    KlkTask(taskDef, taskImpl(error), Array.empty)
 
-  def processTaskDef(testClassLoader: ClassLoader)(taskDef: TaskDef): List[KlkTask] =
+  def processTaskDef(testClassLoader: ClassLoader)(taskDef: TaskDef): Task =
     KlkTask.fromTaskDef(testClassLoader)(taskDef).valueOr(errorTask(taskDef))
 
   def process(testClassLoader: ClassLoader)(taskDefs: Array[TaskDef]): Array[Task] =
-    taskDefs.toList.flatMap(processTaskDef(testClassLoader)).toArray
+    taskDefs.toList.map(processTaskDef(testClassLoader)).toArray
 }

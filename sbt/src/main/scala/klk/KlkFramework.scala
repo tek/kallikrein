@@ -61,7 +61,7 @@ extends Framework
       def remoteArgs: Array[String] =
         remoteArgs0
 
-      def tasks(x: Array[TaskDef]): Array[Task] =
-        KlkTasks.process(testClassLoader)(x)
+      def tasks(taskDefs: Array[TaskDef]): Array[Task] =
+        KlkTasks.process(testClassLoader)(taskDefs)
     }
 }

@@ -2,7 +2,7 @@ package klk
 
 import cats.data.NonEmptyList
 import cats.effect.{IO, Resource}
-import cats.implicits._
+
 import shapeless.HNil
 
 class SharedResTest

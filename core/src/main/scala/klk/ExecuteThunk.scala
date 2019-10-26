@@ -1,7 +1,7 @@
 package klk
 
 import cats.Monad
-import cats.implicits._
+
 import org.scalacheck.Prop
 import org.typelevel.discipline.Laws
 

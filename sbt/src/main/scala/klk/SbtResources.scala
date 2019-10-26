@@ -1,11 +1,7 @@
 package klk
 
-import scala.concurrent.ExecutionContext
+import cats.effect.Sync
 
-import cats.{Applicative, Functor}
-import cats.data.EitherT
-import cats.effect.{Concurrent, IO, Sync}
-import cats.implicits._
 import sbt.testing.Logger
 
 case class SbtTestLog(loggers: Array[Logger])

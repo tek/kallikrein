@@ -5,7 +5,7 @@ import java.util.concurrent.{ExecutorService, ThreadPoolExecutor}
 import cats.{Applicative, Functor}
 import cats.data.Kleisli
 import cats.effect.{Concurrent, Sync}
-import cats.implicits._
+
 import fs2.{Pull, Stream}
 import fs2.concurrent.SignallingRef
 import org.{scalacheck => sc}

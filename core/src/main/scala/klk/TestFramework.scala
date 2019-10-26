@@ -1,6 +1,6 @@
 package klk
 
-import cats.effect.Sync
+import cats.Applicative
 
 trait TestFramework[RunF[_], Resources]
 {
@@ -9,7 +9,7 @@ trait TestFramework[RunF[_], Resources]
 
 object TestFramework
 {
-  implicit def TestFramework_NoopResources[RunF[_]: Sync]: TestFramework[RunF, NoopResources.type] =
+  implicit def TestFramework_NoopResources[RunF[_]: Applicative]: TestFramework[RunF, NoopResources.type] =
     new TestFramework[RunF, NoopResources.type] {
       def reporter(res: NoopResources.type): TestReporter[RunF] =
         NoopTestReporter()

@@ -2,7 +2,7 @@ package klk
 
 import cats.{Applicative, Functor}
 import cats.data.{Kleisli, NonEmptyList}
-import cats.implicits._
+
 import org.scalacheck.Prop
 import org.typelevel.discipline.Laws
 

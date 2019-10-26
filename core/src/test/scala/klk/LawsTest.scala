@@ -2,7 +2,7 @@ package klk
 
 import cats.Functor
 import cats.effect.IO
-import cats.implicits._
+
 import cats.kernel.Eq
 import cats.laws.discipline.FunctorTests
 import org.scalacheck.ScalacheckShapeless._

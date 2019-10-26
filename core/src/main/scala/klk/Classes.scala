@@ -2,10 +2,9 @@ package klk
 
 import scala.concurrent.ExecutionContext
 
-import cats.{Applicative, Functor}
+import cats.{Applicative, Comonad, Functor}
 import cats.data.EitherT
-import cats.effect.{Concurrent, IO, Sync}
-import cats.implicits._
+import cats.effect.{Concurrent, IO}
 
 import StringColor._
 import StringColors.color
@@ -91,11 +90,17 @@ object Compute
   def apply[F[_]](implicit instance: Compute[F]): Compute[F] =
     instance
 
-  implicit def io: Compute[IO] =
+  implicit def Compute_IO: Compute[IO] =
     new Compute[IO] {
       def run[A](thunk: IO[A]): A =
         thunk
           .unsafeRunSync
+    }
+
+  implicit def Compute_Comonad[F[_]: Comonad]: Compute[F] =
+    new Compute[F] {
+      def run[A](thunk: F[A]): A =
+        thunk.extract
     }
 }
 
