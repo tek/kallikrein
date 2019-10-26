@@ -11,7 +11,7 @@ extends ComposeTest[IO, SbtResources]
     IO.pure(true)
 
   def testFail: IO[Boolean] =
-    IO.pure(false)
+    IO.raiseError(new Exception("boom"))
 
   implicit def cs: ContextShift[IO] =
     IO.contextShift(ExecutionContext.global)

@@ -29,6 +29,7 @@ object TestReporter
       "cats.effect",
       "scala.runtime",
       "scala.concurrent",
+      "java",
     )
 
   def sanitizeStacktrace(trace: List[StackTraceElement]): List[String] =
