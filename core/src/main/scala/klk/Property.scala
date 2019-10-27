@@ -3,9 +3,8 @@ package klk
 import java.util.concurrent.{ExecutorService, ThreadPoolExecutor}
 
 import cats.{Applicative, Functor}
-import cats.data.Kleisli
+import cats.data.{Kleisli, NonEmptyList}
 import cats.effect.{Concurrent, Sync}
-
 import fs2.{Pull, Stream}
 import fs2.concurrent.SignallingRef
 import org.{scalacheck => sc}
@@ -112,15 +111,18 @@ object PropertyTestResult
 
   def resultDetails: PropertyTestResult => KlkResult.Details = {
     case PropertyTestResult(_, PropertyTestState.Stats(_, iterations, discarded), result) =>
-      val message: List[String] = result.status match {
-        case PropTest.Exhausted => List(s"exhausted after $iterations iterations, discarding $discarded")
-        case PropTest.Passed => List(s"passed after $iterations iterations")
-        case PropTest.Proved(_) => List(s"proved after $iterations iterations")
+      val message: NonEmptyList[String] = result.status match {
+        case PropTest.Exhausted => NonEmptyList.one(s"exhausted after $iterations iterations, discarding $discarded")
+        case PropTest.Passed => NonEmptyList.one(s"passed after $iterations iterations")
+        case PropTest.Proved(_) => NonEmptyList.one(s"proved after $iterations iterations")
         case PropTest.Failed(args, labels) =>
-          s"failed after $iterations iterations for" :: formatArgs(args) ::: labels.toList
+          NonEmptyList(
+            s"failed after $iterations iterations for",
+            formatArgs(args) ::: labels.toList,
+          )
         case PropTest.PropException(args, e, labels) =>
-          val exception = e.getMessage :: e.getStackTrace.toList.map(_.toString)
-          "failed with exception" :: formatArgs(args) ::: labels.toList ::: exception
+          val exception = NonEmptyList(e.getMessage, e.getStackTrace.toList.map(_.toString))
+          NonEmptyList("failed with exception", formatArgs(args)).concat(labels.toList) ::: exception
       }
       KlkResult.Details.Simple(message)
   }

@@ -3,7 +3,7 @@ package klk
 import scala.concurrent.ExecutionContext
 
 import cats.{Applicative, Comonad, Functor}
-import cats.data.EitherT
+import cats.data.{EitherT, NonEmptyList}
 import cats.effect.{Concurrent, IO}
 
 import StringColor._
@@ -11,7 +11,7 @@ import StringColors.color
 
 object Indent
 {
-  def apply(spaces: Int)(lines: List[String]): List[String] =
+  def apply[T[_]: Functor](spaces: Int)(lines: T[String]): T[String] =
     lines.map(a => s"${" " * spaces}$a")
 
 }
@@ -40,15 +40,18 @@ object TestReporter
       .reverse
       .map(_.toString)
 
-  def formatFailure: KlkResult.Details => List[String] = {
+  def formatFailure: KlkResult.Details => NonEmptyList[String] = {
     case KlkResult.Details.NoDetails() =>
-      List("test failed")
+      NonEmptyList.one("test failed")
     case KlkResult.Details.Simple(info) =>
       info
     case KlkResult.Details.Complex(desc, target, actual) =>
-      desc ::: Indent(2)(List(s"target: ${target.toString.green}", s"actual: ${actual.toString.magenta}"))
+      desc ::: Indent(2)(NonEmptyList.of(s"target: ${target.toString.green}", s"actual: ${actual.toString.magenta}"))
     case KlkResult.Details.Fatal(error) =>
-      s"${"test threw".blue} ${error.toString.magenta}" :: Indent(2)(sanitizeStacktrace(error.getStackTrace.toList))
+      NonEmptyList(
+        s"${"test threw".blue} ${error.toString.magenta}",
+        Indent(2)(sanitizeStacktrace(error.getStackTrace.toList)),
+      )
   }
 
   def successSymbol: Boolean => String = {
@@ -56,8 +59,8 @@ object TestReporter
     case true => "✔".green
   }
 
-  def formatResult(desc: String)(success: Boolean): List[String] =
-    List(s"${successSymbol(success)} $desc")
+  def formatResult(desc: String)(success: Boolean): NonEmptyList[String] =
+    NonEmptyList.one(s"${successSymbol(success)} $desc")
 
   def report[F[_]: Applicative]
   (reporter: TestReporter[F])
@@ -143,7 +146,7 @@ object TestResult
   : TestResult[Either[A, B]] =
     new TestResult[Either[A, B]] {
       def apply(output: Either[A, B]): KlkResult =
-        output.map(inner(_)).valueOr(a => KlkResult.simpleFailure(List(a.toString)))
+        output.map(inner(_)).valueOr(a => KlkResult.simpleFailure(NonEmptyList.one(a.toString)))
     }
 }
 

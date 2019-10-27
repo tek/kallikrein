@@ -2,7 +2,6 @@ package klk
 
 import cats.{Applicative, Functor}
 import cats.data.{Kleisli, NonEmptyList}
-
 import org.scalacheck.Prop
 import org.typelevel.discipline.Laws
 
@@ -36,7 +35,7 @@ object LawsResult
     case Executed(results) =>
       KlkResult.Multi(results.map(PropertyTestResult.klkResult))
     case Empty =>
-      KlkResult.failure(KlkResult.Details.Simple(List("no properties in law test")))
+      KlkResult.failure(KlkResult.Details.Simple(NonEmptyList.one("no properties in law test")))
   }
 
   implicit def TestResult_LawsResult: TestResult[LawsResult] =

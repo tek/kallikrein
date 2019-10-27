@@ -1,19 +1,20 @@
 package klk
 
+import cats.{Functor, Traverse}
+import cats.data.NonEmptyList
 import cats.effect.Sync
-
 import sbt.testing.Logger
 
 case class SbtTestLog(loggers: Array[Logger])
 
 object SbtTestLog
 {
-  def sync[F[_]: Sync](log: SbtTestLog)(f: Logger => String => Unit): List[String] => F[Unit] =
+  def sync[F[_]: Sync, T[_]: Traverse](log: SbtTestLog)(f: Logger => String => Unit): T[String] => F[Unit] =
     lines =>
       log.loggers.toList.traverse_(logger => lines.traverse_(line => Sync[F].delay(f(logger)(line))))
 
-  def unsafe(log: SbtTestLog)(f: Logger => String => Unit)(lines: List[String]): Unit =
-      log.loggers.toList.foreach(logger => lines.foreach(line => f(logger)(line)))
+  def unsafe[T[_]: Functor](log: SbtTestLog)(f: Logger => String => Unit)(lines: T[String]): Unit =
+      log.loggers.toList.foreach(logger => lines.map(line => f(logger)(line)))
 }
 
 case class SbtResources(log: SbtTestLog)
@@ -35,8 +36,9 @@ extends TestReporter[F]
 {
   def result: String => Boolean => F[Unit] =
     desc => success =>
-      SbtTestLog.sync[F](log)(if (success) _.info else _.error).apply(TestReporter.formatResult(desc)(success))
+      SbtTestLog.sync[F, NonEmptyList](log)(if (success) _.info else _.error)
+        .apply(TestReporter.formatResult(desc)(success))
 
   def failure: KlkResult.Details => F[Unit] =
-    SbtTestLog.sync[F](log)(_.error).compose(Indent(2)).compose(TestReporter.formatFailure)
+    SbtTestLog.sync[F, NonEmptyList](log)(_.error).compose(Indent[NonEmptyList](2)).compose(TestReporter.formatFailure)
 }

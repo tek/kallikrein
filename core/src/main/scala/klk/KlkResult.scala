@@ -15,10 +15,10 @@ extends KlkResultInstances
     case class NoDetails()
     extends Details
 
-    case class Simple(info: List[String])
+    case class Simple(info: NonEmptyList[String])
     extends Details
 
-    case class Complex(desc: List[String], target: String, actual: String)
+    case class Complex(desc: NonEmptyList[String], target: String, actual: String)
     extends Details
 
     case class Fatal(error: Throwable)
@@ -43,7 +43,7 @@ extends KlkResultInstances
   def failure: Details => KlkResult =
     apply(false)
 
-  def simpleFailure: List[String] => KlkResult =
+  def simpleFailure: NonEmptyList[String] => KlkResult =
     failure.compose(Details.Simple)
 
   def bool(success: Boolean): KlkResult =
