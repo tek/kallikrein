@@ -20,6 +20,7 @@ trait TestReporter[F[_]]
 {
   def result: String => Boolean => F[Unit]
   def failure: KlkResult.Details => F[Unit]
+  def fatal: Throwable => F[Unit]
 }
 
 object TestReporter
@@ -41,18 +42,20 @@ object TestReporter
       .map(_.toString)
 
   def formatFailure: KlkResult.Details => NonEmptyList[String] = {
-    case KlkResult.Details.NoDetails() =>
+    case KlkResult.Details.NoDetails =>
       NonEmptyList.one("test failed")
     case KlkResult.Details.Simple(info) =>
       info
     case KlkResult.Details.Complex(desc, target, actual) =>
       desc ::: Indent(2)(NonEmptyList.of(s"target: ${target.toString.green}", s"actual: ${actual.toString.magenta}"))
-    case KlkResult.Details.Fatal(error) =>
+  }
+
+  def formatFatal: Throwable => NonEmptyList[String] =
+    error =>
       NonEmptyList(
         s"${"test threw".blue} ${error.toString.magenta}",
         Indent(2)(sanitizeStacktrace(error.getStackTrace.toList)),
       )
-  }
 
   def successSymbol: Boolean => String = {
     case false => "✘".red
@@ -62,10 +65,10 @@ object TestReporter
   def formatResult(desc: String)(success: Boolean): NonEmptyList[String] =
     NonEmptyList.one(s"${successSymbol(success)} $desc")
 
-  def report[F[_]: Applicative]
+  def report[F[_]: Applicative, A]
   (reporter: TestReporter[F])
   (desc: String)
-  (result: KlkResult)
+  (result: KlkResult[A])
   : F[Unit] =
     reporter.result(desc)(KlkResult.successful(result)) *>
     KlkResult.failures(result).traverse_(reporter.failure)
@@ -81,6 +84,9 @@ extends TestReporter[F]
     _ => _ => ().pure[F]
 
   def failure: KlkResult.Details => F[Unit] =
+    _ => ().pure[F]
+
+  def fatal: Throwable => F[Unit] =
     _ => ().pure[F]
 }
 
@@ -124,52 +130,68 @@ object ConsConcurrent
 
 trait TestResult[Output]
 {
-  def apply(output: Output): KlkResult
+  type Value
+
+  def apply(output: Output): KlkResult[Value]
 }
 
 object TestResult
 {
-  implicit def TestResult_KlkResult: TestResult[KlkResult] =
-    new TestResult[KlkResult] {
-      def apply(output: KlkResult): KlkResult =
+  type Aux[Output, V] = TestResult[Output] { type Value = V }
+
+  implicit def TestResult_KlkResult[A]: TestResult.Aux[KlkResult[A], A] =
+    new TestResult[KlkResult[A]] {
+      type Value = A
+      def apply(output: KlkResult[A]): KlkResult[A] =
         output
     }
 
-  implicit def TestResult_Boolean: TestResult[Boolean] =
+  implicit def TestResult_Boolean: TestResult.Aux[Boolean, Unit] =
     new TestResult[Boolean] {
-      def apply(output: Boolean): KlkResult =
-        KlkResult(output)(KlkResult.Details.NoDetails())
+      type Value = Unit
+      def apply(output: Boolean): KlkResult[Unit] =
+        KlkResult(output)(KlkResult.Details.NoDetails)
     }
 
   implicit def TestResult_Either[A, B]
-  (implicit inner: TestResult[B])
-  : TestResult[Either[A, B]] =
+  (implicit inner: TestResult.Aux[B, Unit])
+  : TestResult.Aux[Either[A, B], Unit] =
     new TestResult[Either[A, B]] {
-      def apply(output: Either[A, B]): KlkResult =
-        output.map(inner(_)).valueOr(a => KlkResult.simpleFailure(NonEmptyList.one(a.toString)))
+      type Value = Unit
+      def apply(output: Either[A, B]): KlkResult[Value] =
+        output
+          .map(inner(_))
+          .valueOr(a => KlkResult.simpleFailure(NonEmptyList.one(a.toString)))
     }
 }
 
 trait Compile[F[_], G[_], A]
 {
-  def apply(fa: F[A]): G[KlkResult]
+  type Value
+
+  def apply(fa: F[A]): G[KlkResult[Value]]
 }
 
 object Compile
 {
-  implicit def Compile_F_F[F[_]: Functor, A]
-  (implicit result: TestResult[A])
-  : Compile[F, F, A] =
+  type Aux[F[_], G[_], A, V] = Compile[F, G, A] { type Value = V }
+
+  implicit def Compile_F_F[F[_]: Functor, A, V]
+  (implicit result: TestResult.Aux[A, V])
+  : Compile.Aux[F, F, A, V] =
     new Compile[F, F, A] {
-      def apply(fa: F[A]): F[KlkResult] =
+      type Value = V
+
+      def apply(fa: F[A]): F[KlkResult[Value]] =
         fa.map(result(_))
     }
 
-  implicit def Compile_EitherT_F[F[_]: Functor, G[_], E, A]
-  (implicit inner: Compile[F, G, Either[E, A]])
-  : Compile[EitherT[F, E, ?], G, A] =
+  implicit def Compile_EitherT_F[F[_]: Functor, G[_], E, A, V]
+  (implicit inner: Compile.Aux[F, G, Either[E, A], V])
+  : Compile.Aux[EitherT[F, E, ?], G, A, V] =
     new Compile[EitherT[F, E, ?], G, A] {
-      def apply(fa: EitherT[F, E, A]): G[KlkResult] =
+      type Value = V
+      def apply(fa: EitherT[F, E, A]): G[KlkResult[Value]] =
         inner(fa.value)
     }
 }

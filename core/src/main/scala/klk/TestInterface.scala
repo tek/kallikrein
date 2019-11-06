@@ -14,8 +14,8 @@ extends TestMarker
 abstract class TestBase[RunF[_]: Monad: Compute: MeasureTest: TestFramework[*[_], FR], FR]
 extends FrameworkTest[FR]
 {
-  def tests: TestAlg[RunF, Unit, Unit]
+  def tests: Suite[RunF, Unit, Unit]
 
   def run(frameworkResources: FR): List[TestStats] =
-    Compute[RunF].run(RunTestAlg.run(tests).run(RunTestResources.cons(frameworkResources)))
+    Compute[RunF].run(EvalSuite(tests).run(RunTestResources.cons(frameworkResources)))
 }

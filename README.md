@@ -54,7 +54,7 @@ The above mentioned `test` builder can also be used in a pure context and has a 
 composition.
 
 When tests are sequenced in a for comprehension, the semantic effect is that of conditional execution:
-If the first test fails, all following tests are skipped.
+If one test fails, all following tests are skipped.
 
 There is an instance of `SemigroupK` available, allowing you to use the `<+>` operator, resulting in the alternative, or
 `unless`, semantics – i.e. if and only if the first test fails, execute the second one and use its result.
@@ -64,7 +64,6 @@ They do what you would expect, similar to the imperative test building syntax.
 The `parallel` variant requires an instances of `cats.Parallel` and will execute the tests with a `parTraverse`.
 
 ```scala
-
 class DepTest
 extends ComposeTest[IO, SbtResources]
 {
@@ -77,7 +76,7 @@ extends ComposeTest[IO, SbtResources]
   implicit def cs: ContextShift[IO] =
     IO.contextShift(ExecutionContext.global)
 
-  def tests: TestAlg[IO, Unit, Unit] =
+  def tests: Suite[IO, Unit, Unit] =
     for {
       _ <- sharedResource(Resource.pure(5))(
         builder =>
@@ -86,7 +85,7 @@ extends ComposeTest[IO, SbtResources]
       )
       _ <- test("test 1")(testSuccess)
       _ <- test("test 2")(testFail) <+> test("test 3")(testSuccess)
-      _ <- TestAlg.parallel(test("test 4a")(testSuccess), test("test 4b")(testSuccess)) <+> test("test 5")(testFail)
+      _ <- Suite.parallel(test("test 4a")(testSuccess), test("test 4b")(testSuccess)) <+> test("test 5")(testFail)
       _ <- test("test 7")(testFail)
       _ <- test("test 8")(testSuccess)
     } yield ()

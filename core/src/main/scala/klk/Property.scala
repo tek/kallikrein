@@ -135,12 +135,13 @@ object PropertyTestResult
     case PropTest.Passed => true
   }
 
-  def klkResult(result: PropertyTestResult): KlkResult =
+  def klkResult(result: PropertyTestResult): KlkResult[Unit] =
     KlkResult(result.success)(PropertyTestResult.resultDetails(result))
 
-  implicit def TestResult_PropertyTestResult: TestResult[PropertyTestResult] =
+  implicit def TestResult_PropertyTestResult: TestResult.Aux[PropertyTestResult, Unit] =
     new TestResult[PropertyTestResult] {
-      def apply(result: PropertyTestResult): KlkResult =
+      type Value = Unit
+      def apply(result: PropertyTestResult): KlkResult[Unit] =
         klkResult(result)
     }
 }

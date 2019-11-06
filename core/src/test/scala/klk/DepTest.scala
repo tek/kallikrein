@@ -10,22 +10,29 @@ import shapeless.HNil
 class DepTest
 extends Specification
 {
-  def test: TestBuilder[IO, HNil, Id, IO[KlkResult]] =
-    TestBuilder(TestResources.empty)(identity)
+  private[this] case class Cons()
+  extends TestAdder[IO, Id, λ[a => IO[KlkResult[a]]]]
+  {
+    def apply[A](thunk: Id[IO[KlkResult[A]]]): IO[KlkResult[A]] =
+      thunk
+  }
 
-  def testSuccess: IO[KlkResult] =
+  def test: TestBuilder[IO, HNil, Id, λ[a => IO[KlkResult[a]]]] =
+    TestBuilder(TestResources.empty)(Cons())
+
+  def testSuccess: IO[KlkResult[Unit]] =
     test(IO.pure(true))
 
-  def testFail: IO[KlkResult] =
+  def testFail: IO[KlkResult[Unit]] =
     test(IO.pure(false))
 
-  def testThunk(desc: String)(thunk: IO[KlkResult]): KlkTest[IO, Unit] =
+  def testThunk(desc: String)(thunk: IO[KlkResult[Unit]]): KlkTest[IO, Unit, Unit] =
     KlkTest.plain(desc)(thunk)
 
-  def cons(desc: String)(thunk: IO[KlkResult]): TestAlg[IO, Unit, Unit] =
-    TestAlg.single(testThunk(desc)(thunk))
+  def cons(desc: String)(thunk: IO[KlkResult[Unit]]): Suite[IO, Unit, Unit] =
+    Suite.single(testThunk(desc)(thunk))
 
-  def tests: TestAlg[IO, Unit, Unit] =
+  def tests: Suite[IO, Unit, Unit] =
     for {
       _ <- cons("test 1")(testSuccess)
       _ <- cons("test 2")(testFail) <+> cons("test 3")(testSuccess)
@@ -37,8 +44,23 @@ extends Specification
   implicit def cs: ContextShift[IO] =
     IO.contextShift(ExecutionContext.global)
 
+  def stat(name: String, success: Boolean): (String, KlkResult[Unit]) =
+    (name, KlkResult.Single((), success, KlkResult.Details.NoDetails))
+
+  val target: List[(String, KlkResult[Unit])] =
+    List(
+      stat("test 1", true),
+      stat("test 2", false),
+      stat("test 3", true),
+      stat("test 4", true),
+      stat("test 6", false),
+    )
+
   "dependent tests" >> {
-    println(RunTestAlg.run(tests).run(RunTestResources.cons(NoopResources)).unsafeRunSync())
-    1 === 1
+    EvalSuite(tests)
+      .run(RunTestResources.cons(NoopResources))
+      .map(_.map { case TestStats(desc, _, success, _, _) => stat(desc, success) })
+      .map(_.must_==(target))
+      .unsafeRunSync()
   }
 }

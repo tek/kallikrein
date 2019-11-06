@@ -41,13 +41,14 @@ object FinishEvent
 
 object ExecuteTests
 {
-  def status(success: Boolean): Status = if (success) Status.Success else Status.Failure
+  def status(success: Boolean): Status =
+    if (success) Status.Success else Status.Failure
 
   def sendResult(taskDef: TaskDef)(events: EventHandler)(result: TestStats): Unit =
     events.handle(FinishEvent.cons(
       taskDef,
       result.desc,
-      status(KlkResult.successful(result.result)),
+      status(TestStats.reportAsSuccess(result)),
       result.duration,
     ))
 

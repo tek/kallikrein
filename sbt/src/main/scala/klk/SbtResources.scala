@@ -41,4 +41,7 @@ extends TestReporter[F]
 
   def failure: KlkResult.Details => F[Unit] =
     SbtTestLog.sync[F, NonEmptyList](log)(_.error).compose(Indent[NonEmptyList](2)).compose(TestReporter.formatFailure)
+
+  def fatal: Throwable => F[Unit] =
+    SbtTestLog.sync[F, NonEmptyList](log)(_.error).compose(Indent[NonEmptyList](2)).compose(TestReporter.formatFatal)
 }

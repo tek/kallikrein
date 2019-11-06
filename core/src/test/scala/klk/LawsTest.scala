@@ -2,7 +2,6 @@ package klk
 
 import cats.Functor
 import cats.effect.IO
-
 import cats.kernel.Eq
 import cats.laws.discipline.FunctorTests
 import org.scalacheck.ScalacheckShapeless._
@@ -25,10 +24,10 @@ object Funky
 class FunctorLawsTest
 extends KlkSpecification[IO]
 {
-  val target: KlkResult =
-    KlkResult.success(KlkResult.Details.NoDetails())
+  val target: KlkResult[Unit] =
+    KlkResult.success(KlkResult.Details.NoDetails)
 
-  val check: KlkResult => MatchResult[Any] =
+  val check: KlkResult[Unit] => MatchResult[Any] =
     a => KlkResult.successful(a).must_==(true)
 
   assertWith("laws")(_.laws(IO.pure(FunctorTests[Funky].functor[Int, Int, Int])))(check)

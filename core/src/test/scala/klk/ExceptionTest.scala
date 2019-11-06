@@ -11,8 +11,8 @@ extends KlkSpecification[IO]
   def frame1: Boolean =
     throw E
 
-  val target: KlkResult =
-    KlkResult.Single(false, KlkResult.Details.Fatal(E))
+  val target: KlkResult[Unit] =
+    KlkResult.Fatal(E)
 
   assert("exception")(_.apply(IO(frame1)))(target)
 }

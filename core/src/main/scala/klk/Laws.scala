@@ -31,16 +31,18 @@ object LawsResult
   def empty: LawsResult =
     Empty
 
-  def klkResult: LawsResult => KlkResult = {
+  def klkResult: LawsResult => KlkResult[Unit] = {
     case Executed(results) =>
       KlkResult.Multi(results.map(PropertyTestResult.klkResult))
     case Empty =>
       KlkResult.failure(KlkResult.Details.Simple(NonEmptyList.one("no properties in law test")))
   }
 
-  implicit def TestResult_LawsResult: TestResult[LawsResult] =
+  implicit def TestResult_LawsResult: TestResult.Aux[LawsResult, Unit] =
     new TestResult[LawsResult] {
-      def apply(result: LawsResult): KlkResult =
+      type Value = Unit
+
+      def apply(result: LawsResult): KlkResult[Unit] =
         klkResult(result)
     }
 }

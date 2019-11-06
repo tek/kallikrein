@@ -3,16 +3,18 @@ package klk
 import scala.collection.mutable
 
 import cats.{Id, Monad}
+import cats.data.Const
 import cats.effect.{Bracket, Resource}
 import shapeless.HNil
 
-case class DslTests[RunF[_]: Monad: Compute: TestFramework[*[_], FR], FR](tests: mutable.Buffer[TestAlg[RunF, Unit, Unit]])
+case class DslTests[RunF[_]: Monad: Compute: TestFramework[*[_], FR], FR]
+(tests: mutable.Buffer[Suite[RunF, Unit, Unit]])
 {
-  def add(test: TestAlg[RunF, Unit, Unit]): Unit =
-    tests += test
+  def add[A](test: Suite[RunF, Unit, A]): Unit =
+    tests += test.void
 
-  def plain(test: KlkTest[RunF, Unit]): Unit =
-    add(TestAlg.single(test))
+  def plain[A](test: KlkTest[RunF, Unit, A]): Unit =
+    add(Suite.single(test).void)
 
   def resource[SharedRes]
   (resource: Resource[RunF, SharedRes], builder: SharedResource[RunF, SharedRes])
@@ -20,9 +22,9 @@ case class DslTests[RunF[_]: Monad: Compute: TestFramework[*[_], FR], FR](tests:
   : Unit =
     builder.tests.toList match {
       case head :: tail =>
-        add(TestAlg.resource(resource, TestAlg.sequential(head, tail: _*)))
+        add(Suite.resource(resource, Suite.sequential(head, tail: _*)))
       case Nil =>
-        add(TestAlg.Pure(TestAlg.Output.Zero))
+        add(Suite.Pure(()))
     }
 }
 
@@ -38,22 +40,25 @@ extends TestBase[RunF, FR]
   private[this] val testsDsl: DslTests[RunF, FR] =
     DslTests.cons
 
-  def tests: TestAlg[RunF, Unit, Unit] =
+  def tests: Suite[RunF, Unit, Unit] =
     testsDsl.tests.toList match {
       case head :: tail =>
-        TestAlg.sequential(head, tail: _*)
+        Suite.sequential(head, tail: _*)
       case Nil =>
-        TestAlg.Pure(TestAlg.Output.Zero)
+        Suite.Pure(())
     }
 
-  private[this] def add
-  (desc: String)
-  (thunk: Id[RunF[KlkResult]])
-  : Unit =
-    testsDsl.plain(KlkTest.plain(desc)(thunk))
+  private[this] case class Add(desc: String)
+  extends TestAdder[RunF, Id, Const[Unit, *]]
+  {
+    def apply[A](thunk: Id[RunF[KlkResult[A]]]): Const[Unit, A] = {
+      testsDsl.plain(KlkTest.plain(desc)(thunk))
+      Const(())
+    }
+  }
 
-  def test(desc: String): TestBuilder[RunF, HNil, Id, Unit] =
-    TestBuilder(TestResources.empty)(add(desc))
+  def test(desc: String): TestBuilder[RunF, HNil, Id, Const[Unit, *]] =
+    TestBuilder(TestResources.empty)(Add(desc))
 
   def sharedResource[R]
   (resource: Resource[RunF, R])
