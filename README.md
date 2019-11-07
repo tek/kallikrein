@@ -63,6 +63,8 @@ For independent tests, there are two combinators: `sequential` and `parallel`.
 They do what you would expect, similar to the imperative test building syntax.
 The `parallel` variant requires an instances of `cats.Parallel` and will execute the tests with a `parTraverse`.
 
+The following example will result in a successful end result:
+
 ```scala
 class DepTest
 extends ComposeTest[IO, SbtResources]
@@ -86,8 +88,7 @@ extends ComposeTest[IO, SbtResources]
       _ <- test("test 1")(testSuccess)
       _ <- test("test 2")(testFail) <+> test("test 3")(testSuccess)
       _ <- Suite.parallel(test("test 4a")(testSuccess), test("test 4b")(testSuccess)) <+> test("test 5")(testFail)
-      _ <- test("test 7")(testFail)
-      _ <- test("test 8")(testSuccess)
+      _ <- test("test 7")(testSuccess)
     } yield ()
 }
 ```
