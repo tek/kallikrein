@@ -35,16 +35,6 @@ Tests are added by calling the `test` function in a class inheriting `klk.Simple
 implements `cats.effect.Sync`.
 `klk.IOTest` is a convenience trait using `cats.effect.IO`.
 
-The effect type of an individual test can be different from the main effect if there is an instance of `klk.Compile[F,
-G]`.
-For example, `EitherT` is supported out of the box:
-
-```scala
-test("EitherT")(EitherT.right[Unit](IO.pure(1 == 1)))
-```
-
-A `Left` value will be converted into a failure.
-
 Assertions are returned from the test thunk and can be anything, as long as there is an instance for `klk.TestResult`.
 The internal type representing the result is `KlkResult`.
 
@@ -92,6 +82,24 @@ extends ComposeTest[IO, SbtResources]
     } yield ()
 }
 ```
+
+# Results and Effects
+
+The effect type of an individual test can be different from the main effect if there is an instance of `klk.Compile[F,
+G]`.
+For example, `EitherT` is supported out of the box:
+
+```scala
+test("EitherT")(EitherT.right[Unit](IO.pure(1 == 1)))
+```
+
+A `Left` value will be converted into a failure by the typeclass `TestResult[A]`, meaning that this works just as well with
+`IO[Either, A, B]`.
+
+## fs2
+
+A `Stream[F, A]` will automatically be compiled to `F`, with the inner value being handled by a dependent typeclass
+instance.
 
 # Resources
 
