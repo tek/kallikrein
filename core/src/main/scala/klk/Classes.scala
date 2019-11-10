@@ -5,6 +5,7 @@ import scala.concurrent.ExecutionContext
 import cats.{Applicative, Comonad, Functor}
 import cats.data.{EitherT, NonEmptyList}
 import cats.effect.{Concurrent, IO}
+import fs2.Stream
 
 import StringColor._
 import StringColors.color
@@ -163,6 +164,17 @@ object TestResult
           .map(inner(_))
           .valueOr(a => KlkResult.simpleFailure(NonEmptyList.one(a.toString)))
     }
+
+  implicit def TestResult_Option[A]
+  (implicit inner: TestResult.Aux[A, Unit])
+  : TestResult.Aux[Option[A], Unit] =
+    new TestResult[Option[A]] {
+      type Value = Unit
+      def apply(output: Option[A]): KlkResult[Value] =
+        output
+          .map(inner(_))
+          .getOrElse(KlkResult.simpleFailure(NonEmptyList.one("test returned None")))
+    }
 }
 
 trait Compile[F[_], G[_], A]
@@ -193,5 +205,15 @@ object Compile
       type Value = V
       def apply(fa: EitherT[F, E, A]): G[KlkResult[Value]] =
         inner(fa.value)
+    }
+
+  implicit def Compile_Stream[F[_], G[_], A, V]
+  (implicit inner: Compile.Aux[F, G, Option[A], V], streamCompiler: Stream.Compiler[F, F])
+  : Compile.Aux[Stream[F, *], G, A, V] =
+    new Compile[Stream[F, *], G, A] {
+      type Value = V
+
+      def apply(fa: Stream[F, A]): G[KlkResult[Value]] =
+        inner(fa.compile.last)
     }
 }

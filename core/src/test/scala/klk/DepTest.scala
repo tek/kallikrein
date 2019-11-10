@@ -10,7 +10,7 @@ import shapeless.HNil
 class DepTest
 extends Specification
 {
-  private[this] case class Cons()
+  case class Cons()
   extends TestAdder[IO, Id, λ[a => IO[KlkResult[a]]]]
   {
     def apply[A](thunk: Id[IO[KlkResult[A]]]): IO[KlkResult[A]] =
