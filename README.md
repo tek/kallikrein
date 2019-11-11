@@ -95,7 +95,7 @@ test("EitherT")(EitherT.right[Unit](IO.pure(1 == 1)))
 ```
 
 A `Left` value will be converted into a failure by the typeclass `TestResult[A]`, meaning that this works just as well with
-`IO[Either, A, B]`.
+`IO[Either[A, B]]`.
 
 ## fs2
 
