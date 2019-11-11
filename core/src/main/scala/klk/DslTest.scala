@@ -17,7 +17,7 @@ case class DslTests[RunF[_]: Monad: Compute: TestFramework[*[_], FR], FR]
     add(Suite.single(test).void)
 
   def resource[SharedRes]
-  (resource: Resource[RunF, SharedRes], builder: SharedResource[RunF, SharedRes])
+  (resource: Resource[RunF, SharedRes], builder: DslSharedResource[RunF, SharedRes])
   (implicit bracket: Bracket[RunF, Throwable])
   : Unit =
     builder.tests.toList match {
@@ -62,8 +62,8 @@ extends TestBase[RunF, FR]
 
   def sharedResource[R]
   (resource: Resource[RunF, R])
-  : SharedResource[RunF, R] = {
-    val res = SharedResource.cons[RunF, R]
+  : DslSharedResource[RunF, R] = {
+    val res = DslSharedResource.cons[RunF, R]
     testsDsl.resource(resource, res)
     res
   }

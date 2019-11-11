@@ -32,11 +32,9 @@ object Http4s
     def withBuilder(newBuilder: BlazeServerBuilder[RunF]): ServeRoutes[RunF, FR] =
       copy(builder = Some(newBuilder))
 
-    def test(tests: SharedResourceNonDsl[RunF, (Client[RunF], Uri), FR] => Suite[RunF, (Client[RunF], Uri), Unit])
-    : Suite[RunF, Unit, Unit] = {
-      val resource = Http4s.serverResource[RunF](app, builder, client)
-      Suite.resource(resource, tests(SharedResourceNonDsl(resource)))
-    }
+    def test[A](tests: SharedResource[RunF, (Client[RunF], Uri), FR] => Suite[RunF, (Client[RunF], Uri), A])
+    : Suite[RunF, Unit, A] =
+      SharedResource.suite(Http4s.serverResource[RunF](app, builder, client))(tests)
   }
 
   case class Serve[RunF[_]: Compute: MonadError[*[_], Throwable]: TestFramework[*[_], FR], FR]()

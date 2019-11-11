@@ -19,8 +19,8 @@ extends TestBase[RunF, FR]
 
   def sharedResource[R]
   (resource: Resource[RunF, R])
-  (tests: SharedResourceNonDsl[RunF, R, FR] => Suite[RunF, R, Unit])
+  (tests: SharedResource[RunF, R, FR] => Suite[RunF, R, Unit])
   (implicit bracket: Bracket[RunF, Throwable])
   : Suite[RunF, Unit, Unit] =
-    Suite.resource(resource, tests(SharedResourceNonDsl(resource)))
+    SharedResource.suite(resource)(tests)
 }

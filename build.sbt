@@ -29,11 +29,20 @@ val http4s = pro("http4s")
       "org.http4s" %% "http4s-blaze-server" % "0.21.0-M5",
       "org.http4s" %% "http4s-blaze-client" % "0.21.0-M5",
       "ch.qos.logback" % "logback-classic" % "1.2.3" % Test,
-    )
+    ),
+  )
+
+val http4sSbt = pro("http4s-sbt")
+  .dependsOn(http4s, sbtp)
+  .settings(
+    libraryDependencies ++= List(
+      "ch.qos.logback" % "logback-classic" % "1.2.3" % Test,
+    ),
+    testFrameworks += new TestFramework("klk.KlkFramework"),
   )
 
 val root = basicProject(project.in(file(".")))
-  .aggregate(core, sbtp)
+  .aggregate(core, sbtp, http4s, http4sSbt)
   .settings(name := "kallikrein")
   .settings(noPublish)
 

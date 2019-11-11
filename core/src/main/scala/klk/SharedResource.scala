@@ -4,10 +4,10 @@ import scala.collection.mutable
 
 import cats.MonadError
 import cats.data.Const
-import cats.effect.Resource
+import cats.effect.{Bracket, Resource}
 import shapeless.HNil
 
-case class SharedResourceNonDsl[RunF[_]: Compute: MonadError[*[_], Throwable]: TestFramework[*[_], FR], SharedRes, FR]
+case class SharedResource[RunF[_]: Compute: MonadError[*[_], Throwable]: TestFramework[*[_], FR], SharedRes, FR]
 (resource: Resource[RunF, SharedRes])
 {
   private[this] case class Cons(desc: String)
@@ -21,7 +21,16 @@ case class SharedResourceNonDsl[RunF[_]: Compute: MonadError[*[_], Throwable]: T
     TestBuilder(TestResources.empty)(Cons(desc))
 }
 
-case class SharedResource[RunF[_]: MonadError[*[_], Throwable], SharedRes]
+object SharedResource
+{
+  def suite[RunF[_]: Compute: TestFramework[*[_], FR]: Bracket[*[_], Throwable], SharedRes, FR, A]
+  (resource: Resource[RunF, SharedRes])
+  (tests: SharedResource[RunF, SharedRes, FR] => Suite[RunF, SharedRes, A])
+  : Suite[RunF, Unit, A] =
+    Suite.resource(resource, tests(SharedResource(resource)))
+}
+
+case class DslSharedResource[RunF[_]: MonadError[*[_], Throwable], SharedRes]
 (tests: mutable.Buffer[Suite[RunF, SharedRes, Unit]])
 {
   private[this] case class Add(desc: String)
@@ -37,8 +46,8 @@ case class SharedResource[RunF[_]: MonadError[*[_], Throwable], SharedRes]
     TestBuilder(TestResources.empty)(Add(desc))
 }
 
-object SharedResource
+object DslSharedResource
 {
-  def cons[RunF[_]: MonadError[*[_], Throwable], SharedRes]: SharedResource[RunF, SharedRes] =
-    SharedResource(mutable.Buffer.empty)
+  def cons[RunF[_]: MonadError[*[_], Throwable], SharedRes]: DslSharedResource[RunF, SharedRes] =
+    DslSharedResource(mutable.Buffer.empty)
 }

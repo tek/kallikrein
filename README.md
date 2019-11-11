@@ -5,10 +5,11 @@
 If you're into matcher DSLs, check out [xpct], which is a framework-agnostic typed matcher lib with support for
 **kallikrein**.
 
-## module id
+## module ids
 
 ```sbt
-"io.tryp" %% "kallikrein-sbt" % "0.3.0"
+"io.tryp" %% "kallikrein-sbt" % "0.4.0"
+"io.tryp" %% "kallikrein-http4s-sbt" % "0.4.0"
 ```
 
 ## sbt
@@ -101,6 +102,36 @@ A `Left` value will be converted into a failure by the typeclass `TestResult[A]`
 A `Stream[F, A]` will automatically be compiled to `F`, with the inner value being handled by a dependent typeclass
 instance.
 
+## http4s
+
+The `kallikrein-http4s-sbt` module provides a [shared resource](#resources) that runs an [http4s] server on a random
+port and supplies tests with a client and the `Uri` of the server:
+
+```scala
+class SomeTest
+extends klk.Http4sTest[IO]
+{
+  implicit def cs: ContextShift[IO] =
+    IO.contextShift(ExecutionContext.global)
+
+  implicit def timer: Timer[IO] =
+    IO.timer(ExecutionContext.global)
+
+  def tests: Suite[IO, Unit, Unit] =
+    server
+      .app(HttpApp.liftF(IO.pure(Response[IO]())))
+      .test { builder =>
+      builder.test("http4s") {
+        case (client, uri) =>
+          client.fetch(Request[IO](uri = uri)) {
+            case Successful(_) => IO.pure(true)
+            case _ => IO.pure(false)
+          }
+      }
+    }
+}
+```
+
 # Resources
 
 Tests can depend on shared and individual resources that will be supplied by the framework when running:
@@ -123,8 +154,6 @@ extends klk.IOTest
   eightySix.test("shared resource 2")(i => IO.pure(i == 68))
 }
 ```
-
-The resource parameters in the builder are typed, so the compiler will complain if they don't match.
 
 The shared resource will be acquired only once and supplied to all tests that use it.
 

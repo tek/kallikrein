@@ -7,7 +7,7 @@ import cats.effect.{ContextShift, IO, Timer}
 import org.http4s.{HttpRoutes, Request, Response}
 import org.http4s.Status.Successful
 
-class Http4sTest
+class Http4sSuiteTest
 extends KlkSpecification[IO]
 {
   implicit def cs: ContextShift[IO] =
