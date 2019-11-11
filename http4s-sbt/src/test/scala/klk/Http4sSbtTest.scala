@@ -1,20 +1,12 @@
 package klk
 
-import scala.concurrent.ExecutionContext
-
-import cats.effect.{ContextShift, IO, Timer}
+import cats.effect.IO
 import org.http4s.{HttpApp, Request, Response}
 import org.http4s.Status.Successful
 
 class Http4sSbtTest
 extends Http4sIOTest
 {
-  implicit def cs: ContextShift[IO] =
-    IO.contextShift(ExecutionContext.global)
-
-  implicit def timer: Timer[IO] =
-    IO.timer(ExecutionContext.global)
-
   def tests: Suite[IO, Unit, Unit] =
     server
       .app(HttpApp.liftF(IO.pure(Response[IO]())))

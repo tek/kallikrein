@@ -4,7 +4,7 @@ import scala.concurrent.ExecutionContext
 
 import cats.{Applicative, Comonad, Functor}
 import cats.data.{EitherT, NonEmptyList}
-import cats.effect.{Concurrent, IO}
+import cats.effect.{ConcurrentEffect, IO, Timer}
 import fs2.Stream
 
 import StringColor._
@@ -117,15 +117,29 @@ object Compute
 
 trait ConsConcurrent[F[_]]
 {
-  def pool(ec: ExecutionContext): Concurrent[F]
+  def apply(ec: ExecutionContext): ConcurrentEffect[F]
 }
 
 object ConsConcurrent
 {
   implicit def io: ConsConcurrent[IO] =
     new ConsConcurrent[IO] {
-      def pool(ec: ExecutionContext): Concurrent[IO] =
+      def apply(ec: ExecutionContext): ConcurrentEffect[IO] =
         IO.ioConcurrentEffect(IO.contextShift(ec))
+    }
+}
+
+trait ConsTimer[F[_]]
+{
+  def apply(ec: ExecutionContext): Timer[F]
+}
+
+object ConsTimer
+{
+  implicit def io: ConsTimer[IO] =
+    new ConsTimer[IO] {
+      def apply(ec: ExecutionContext): Timer[IO] =
+        IO.timer(ec)
     }
 }
 

@@ -5,7 +5,7 @@ val core = pro("core")
     libraryDependencies ++= List(
       "org.typelevel" %% "cats-effect" % "2.0.0",
       "org.typelevel" %% "cats-laws" % "2.0.0",
-      "co.fs2" %% "fs2-core" % "2.0.0",
+      "co.fs2" %% "fs2-core" % "2.1.0",
       "org.scalacheck" %% "scalacheck" % "1.14.0",
       "com.chuusai" %% "shapeless" % "2.3.3",
       "org.specs2" %% "specs2-core" % "4.7.1" % Test,

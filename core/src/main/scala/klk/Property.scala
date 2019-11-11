@@ -211,7 +211,7 @@ object PropertyTest
   (test: PropertyTest[F])
   : F[PropertyTestResult] =
     Concurrency.ec[F](discardingPool[F](params.test.workers))
-      .map(concurrent.pool)
+      .map(concurrent(_))
       .map(stream(params)(test)(_))
       .use(_.compile.last.map(_.getOrElse(PropertyTestResult.noInput)))
 

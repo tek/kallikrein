@@ -20,8 +20,8 @@ extends KlkSpecification[IO]
     HttpRoutes.liftF(OptionT.pure(Response[IO]()))
 
   val test: Suite[IO, Unit, Unit] =
-    Http4s.server.routes(routes).test { builder =>
-      builder.test("http4s") {
+    Http4s.server[IO, NoopResources.type].routes(routes).test { res =>
+      res.test("http4s") {
         case (client, uri) =>
           client.fetch(Request[IO](uri = uri)) {
             case Successful(_) => IO.pure(true)
