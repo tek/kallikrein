@@ -8,8 +8,8 @@ If you're into matcher DSLs, check out [xpct], which is a framework-agnostic typ
 ## module ids
 
 ```sbt
-"io.tryp" %% "kallikrein-sbt" % "0.5.0"
-"io.tryp" %% "kallikrein-http4s-sbt" % "0.5.0"
+"io.tryp" %% "kallikrein-sbt" % "0.5.1"
+"io.tryp" %% "kallikrein-http4s-sbt" % "0.5.1"
 ```
 
 ## sbt
