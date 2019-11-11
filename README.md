@@ -189,3 +189,4 @@ extends klk.IOTest
 [xpct]: https://github.com/tek/xpct
 [scalacheck]: https://github.com/typelevel/scalacheck
 [cats-discipline]: https://github.com/typelevel/discipline
+[http4s]: https://github.com/http4s/http4s
