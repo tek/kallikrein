@@ -111,12 +111,6 @@ port and supplies tests with a client and the `Uri` of the server:
 class SomeTest
 extends klk.Http4sTest[IO]
 {
-  implicit def cs: ContextShift[IO] =
-    IO.contextShift(ExecutionContext.global)
-
-  implicit def timer: Timer[IO] =
-    IO.timer(ExecutionContext.global)
-
   def tests: Suite[IO, Unit, Unit] =
     server
       .app(HttpApp.liftF(IO.pure(Response[IO]())))
