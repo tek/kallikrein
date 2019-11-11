@@ -22,14 +22,14 @@ object Concurrency
   def fixedPool[F[_]: Sync]: F[ExecutorService] =
     fixedPoolWith(defaultNum)
 
-  def fixedPoolEc: Resource[IO, ExecutionContext] =
-    ec(fixedPool[IO])
+  def fixedPoolEc[F[_]: Sync]: Resource[F, ExecutionContext] =
+    ec(fixedPool[F])
 
   def fixedPoolEcWith(num: Int): Resource[IO, ExecutionContext] =
     ec(fixedPoolWith[IO](num))
 
   def fixedPoolEcStream: Stream[IO, ExecutionContext] =
-    Stream.resource(fixedPoolEc)
+    Stream.resource(fixedPoolEc[IO])
 
   def cs(pool: IO[ExecutorService]): Resource[IO, ContextShift[IO]] =
     ec(pool)

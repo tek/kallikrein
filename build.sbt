@@ -22,6 +22,16 @@ val sbtp = pro("sbt")
     testFrameworks += new TestFramework("klk.KlkFramework"),
   )
 
+val http4s = pro("http4s")
+  .dependsOn(core % "compile->compile;test->test")
+  .settings(
+    libraryDependencies ++= List(
+      "org.http4s" %% "http4s-blaze-server" % "0.21.0-M5",
+      "org.http4s" %% "http4s-blaze-client" % "0.21.0-M5",
+      "ch.qos.logback" % "logback-classic" % "1.2.3" % Test,
+    )
+  )
+
 val root = basicProject(project.in(file(".")))
   .aggregate(core, sbtp)
   .settings(name := "kallikrein")

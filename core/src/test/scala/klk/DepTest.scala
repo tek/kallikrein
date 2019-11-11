@@ -44,22 +44,19 @@ extends Specification
   implicit def cs: ContextShift[IO] =
     IO.contextShift(ExecutionContext.global)
 
-  def stat(name: String, success: Boolean): (String, KlkResult[Unit]) =
-    (name, KlkResult.Single((), success, KlkResult.Details.NoDetails))
-
-  val target: List[(String, KlkResult[Unit])] =
+  val target: List[(String, Boolean)] =
     List(
-      stat("test 1", true),
-      stat("test 2", false),
-      stat("test 3", true),
-      stat("test 4", true),
-      stat("test 6", false),
+      ("test 1", true),
+      ("test 2", false),
+      ("test 3", true),
+      ("test 4", true),
+      ("test 6", false),
     )
 
   "dependent tests" >> {
     EvalSuite(tests)
       .run(RunTestResources.cons(NoopResources))
-      .map(_.map { case TestStats(desc, _, success, _, _) => stat(desc, success) })
+      .map(_.map { case TestStats(desc, _, success, _, _) => (desc, success) })
       .map(_.must_==(target))
       .unsafeRunSync()
   }
