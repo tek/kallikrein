@@ -105,7 +105,7 @@ instance.
 ## http4s
 
 The `kallikrein-http4s-sbt` module provides a [shared resource](#resources) that runs an [http4s] server on a random
-port and supplies tests with a client and the `Uri` of the server:
+port and supplies tests with a client and the `Uri` of the server wrapped in a test client interface:
 
 ```scala
 class SomeTest
@@ -115,16 +115,16 @@ extends klk.Http4sTest[IO]
     server
       .app(HttpApp.liftF(IO.pure(Response[IO]())))
       .test { builder =>
-      builder.test("http4s") {
-        case (client, uri) =>
-          client.fetch(Request[IO](uri = uri)) {
-            case Successful(_) => IO.pure(true)
-            case _ => IO.pure(false)
-          }
+      builder.test("http4s") { client =>
+        client.fetch(Request[IO]())(_ => IO.pure(true))
       }
     }
 }
 ```
+
+The `TestClient` class provides a `fetch` method that injects the uri into the request with its
+`withUri(request: Request[F])` method, as well as a `success` method, which produces a failed `KlkResult` if the
+response status is other than `2xx`.
 
 # Resources
 

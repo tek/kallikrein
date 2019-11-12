@@ -2,9 +2,10 @@ package klk
 
 import java.net.ServerSocket
 
-import cats.Functor
+import cats.{Functor, MonadError}
+import cats.data.{EitherT, NonEmptyList}
 import cats.effect.{Resource, Sync}
-import org.http4s.{HttpApp, HttpRoutes, Uri}
+import org.http4s.{EntityDecoder, HttpApp, HttpRoutes, Request, Response, Status, Uri}
 import org.http4s.client.Client
 import org.http4s.client.blaze.BlazeClientBuilder
 import org.http4s.implicits._
@@ -23,6 +24,36 @@ object FreePort
     }(a => Sync[F].delay(a.close()))
 }
 
+case class TestClient[F[_]](client: Client[F], port: Port)
+{
+  def authority: Uri.Authority =
+    Uri.Authority(port = Some(port.number))
+
+  def uri(uri: Uri): Uri =
+    uri.copy(authority = Some(authority))
+
+  def withUri(request: Request[F]): Request[F] =
+    request.withUri(uri(request.uri))
+
+  def fetch[A](request: Request[F])(f: Response[F] => F[A]): F[A] =
+    client.fetch(withUri(request))(f)
+
+  def success[A]
+  (request: Request[F])
+  (f: Response[F] => F[A])
+  (implicit monadError: MonadError[F, Throwable], decoder: EntityDecoder[F, String])
+  : EitherT[F, KlkResult[Unit], A] =
+    EitherT {
+      fetch(request) {
+        case Status.Successful(response) =>
+          f(response).map(Right(_))
+        case response =>
+          response.as[String]
+            .map(body => Left(KlkResult.simpleFailure(NonEmptyList.one(s"request failed: $body ($response)"))))
+      }
+    }
+}
+
 object Http4s
 {
   case class ServeRoutes[RunF[_], FR]
@@ -32,7 +63,7 @@ object Http4s
       copy(builder = Some(newBuilder))
 
     def test[A]
-    (tests: SharedResource[RunF, (Client[RunF], Uri), FR] => Suite[RunF, (Client[RunF], Uri), A])
+    (tests: SharedResource[RunF, TestClient[RunF], FR] => Suite[RunF, TestClient[RunF], A])
     (
       implicit
       sync: Sync[RunF],
@@ -42,7 +73,7 @@ object Http4s
       consTimer: ConsTimer[RunF],
     )
     : Suite[RunF, Unit, A] =
-      SharedResource.suite(Http4s.serverResource[RunF](app, builder, client))(tests)
+      SharedResource.suite(Http4s.serverResource[RunF](consConcurrent, consTimer)(app, builder, client))(tests)
   }
 
   case class Serve[RunF[_], FR]()
@@ -62,10 +93,13 @@ object Http4s
   def server[RunF[_], FR]: Serve[RunF, FR] =
     Serve()
 
+  def defaultClient[RunF[_]: Sync](consConcurrent: ConsConcurrent[RunF]): Resource[RunF, Client[RunF]] =
+    Concurrency.fixedPoolEc.flatMap(ec => BlazeClientBuilder[RunF](ec)(consConcurrent(ec)).resource)
+
   def serverResource[RunF[_]: Sync]
+  (consConcurrent: ConsConcurrent[RunF], consTimer: ConsTimer[RunF])
   (app: HttpApp[RunF], builder: Option[BlazeServerBuilder[RunF]], client: Option[Resource[RunF, Client[RunF]]])
-  (implicit consConcurrent: ConsConcurrent[RunF], consTimer: ConsTimer[RunF])
-  : Resource[RunF, (Client[RunF], Uri)] =
+  : Resource[RunF, TestClient[RunF]] =
     Concurrency.fixedPoolEc[RunF].flatMap { ec =>
       for {
         port <- Resource.liftF(FreePort.find[RunF])
@@ -73,10 +107,8 @@ object Http4s
           .bindHttp(port.number, "0.0.0.0")
           .withHttpApp(app)
           .resource
-        client <- client.getOrElse(
-          Concurrency.fixedPoolEc.flatMap(ec => BlazeClientBuilder[RunF](ec)(consConcurrent(ec)).resource)
-        )
-      } yield (client, Uri(authority = Some(Uri.Authority(port = Some(port.number)))))
+        client <- client.getOrElse(defaultClient(consConcurrent))
+      } yield TestClient(client, port)
     }
 }
 
