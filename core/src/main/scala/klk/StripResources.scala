@@ -23,7 +23,8 @@ object StripResources
     new StripResources[RunF, HNil, TestF[Output]] {
       type Thunk = TestF[Output]
       def apply(resources: TestResources[HNil])(thunk: Thunk): Resource[RunF, Thunk] =
-        Resource.pure(thunk)
+        // TODO 2.12 compat
+        Resource.pure[RunF, Thunk](thunk)
     }
 
   implicit def StripResources_HList[TestF[_], RunF[_]: Bracket[*[_], Throwable], H, T <: HList, ThunkF, Output]

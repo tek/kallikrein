@@ -8,9 +8,12 @@ class SharedResTest
 extends KlkSharedResourceSpecification[IO, Int]
 {
   def resource: Resource[IO, Int] =
-    Resource.pure(86)
+    // TODO 2.12 compat
+    Resource.pure[IO, Int](86)
 
-  val testResource: Resource[IO, Int] = Resource.pure(4)
+  val testResource: Resource[IO, Int] =
+    // TODO 2.12 compat
+    Resource.pure[IO, Int](4)
 
   def srTest(builder: TestBuilder[IO, HNil, Function1[Int, ?], λ[a => Int => IO[KlkResult[a]]]])
   : List[Int => IO[KlkResult[Unit]]] =

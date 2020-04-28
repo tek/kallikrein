@@ -18,7 +18,8 @@ extends Specification
   }
 
   def test: TestBuilder[IO, HNil, Id, λ[a => IO[KlkResult[a]]]] =
-    TestBuilder(TestResources.empty)(Cons())
+    // TODO 2.12 compat
+    TestBuilder[IO, HNil, Id, λ[a => IO[KlkResult[a]]]](TestResources.empty)(Cons())
 
   def testSuccess: IO[KlkResult[Unit]] =
     test(IO.pure(true))

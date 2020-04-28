@@ -22,7 +22,7 @@ extends ComposeTest[IO, SbtResources]
   // composition should work so that only thunks having the resource parameter compile.
   def tests: Suite[IO, Unit, Unit] =
     for {
-      _ <- sharedResource(Resource.pure(5))(
+      _ <- sharedResource(Resource.pure[IO, Int](5))(
         builder =>
           builder.test("five is 4")(five => IO.pure(five == 4)) <+>
           builder.test("five is 5")(five => IO.pure(five == 5))

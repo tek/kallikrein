@@ -1,5 +1,7 @@
 ThisBuild / scalaVersion := "2.13.2"
 
+crossScalaVersions += "2.12.11"
+
 val core = pro("core")
   .settings(
     libraryDependencies ++= List(

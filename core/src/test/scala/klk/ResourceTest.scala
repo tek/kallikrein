@@ -5,9 +5,11 @@ import cats.effect.{IO, Resource}
 class ResourceTest
 extends KlkSpecification[IO]
 {
-  val res1: Resource[IO, Int] = Resource.pure(1)
+  // TODO 2.12 compat
+  val res1: Resource[IO, Int] = Resource.pure[IO, Int](1)
 
-  val res2: Resource[IO, Int] = Resource.pure(1)
+  // TODO 2.12 compat
+  val res2: Resource[IO, Int] = Resource.pure[IO, Int](1)
 
   val target: KlkResult[Unit] =
     KlkResult.success(KlkResult.Details.NoDetails)

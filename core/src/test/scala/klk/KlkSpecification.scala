@@ -21,7 +21,9 @@ extends Specification
   def test[A]
   (f: TestBuilder[RunF, HNil, Id, λ[a => RunF[KlkResult[a]]]] => RunF[KlkResult[Unit]])
   : KlkResult[Unit] = {
-    val th: RunF[KlkResult[Unit]] = f(TestBuilder.cons(Add()))
+    val th: RunF[KlkResult[Unit]] =
+    // TODO 2.12 compat
+      f(TestBuilder.cons[RunF, Id, λ[a => RunF[KlkResult[a]]]](Add()))
     val kt = KlkTest.plain("test")(th)
     KlkTest.runPlain(kt)(NoopResources)
   }
@@ -58,7 +60,9 @@ extends Specification
   (f: TestBuilder[RunF, HNil, R => *, λ[a => R => RunF[KlkResult[a]]]] => List[R => RunF[KlkResult[Unit]]])
   : KlkResult[Unit] = {
     val sr = DslSharedResource.cons[RunF, R]
-    val thunks: List[R => RunF[KlkResult[Unit]]] = f(TestBuilder.cons(Add()))
+    // TODO 2.12 compat
+    val thunks: List[R => RunF[KlkResult[Unit]]] =
+      f(TestBuilder.cons[RunF, R => *, λ[a => R => RunF[KlkResult[a]]]](Add()))
     val kt = thunks.map(th => KlkTest.cons("test")(th))
     KlkTest.runResource(resource)(kt)(NoopResources)
   }
